@@ -1,29 +1,43 @@
 import Constants from 'expo-constants';
 
 /**
- * Risoluzione Intelligente dell'URL Backend:
- * 1. STANDALONE (Preview APK / Production): usa rigorosamente EXPO_PUBLIC_API_URL (iniettato a build time).
- * 2. SVILUPPO (Expo Go / Metro): se manca EXPO_PUBLIC_API_URL, ricava l'IP host del computer da Constants.expoConfig.hostUri.
- * 3. EMULATORE / FALLBACK: 10.0.2.2 per emulatore Android standard, localhost per Web.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * 🌐 Risoluzione Intelligente dell'URL Backend (HaruKaizen Local-Edition)
+ * ─────────────────────────────────────────────────────────────────────────────
+ * 1. PRIORITÀ ASSOLUTA — Variabile d'ambiente:
+ *    EXPO_PUBLIC_API_URL definita in `apps/mobile/.env` (es. "http://192.168.1.150:8080/api/v1").
+ * 
+ * 2. SVILUPPO SU RETE LOCALE (Expo Go / Metro Bundler):
+ *    Se la variabile non è impostata, estrae automaticamente l'IP locale del PC
+ *    dalla connessione Metro attiva (Constants.expoConfig.hostUri).
+ * 
+ * 3. EMULATORE / FALLBACK:
+ *    - Android Emulator: http://10.0.2.2:8080/api/v1 (porta 8080 per Local Docker Compose)
+ *    - iOS Simulator / Web: http://localhost:8080/api/v1
+ * 
+ * 👉 OVERRIDE MANUALE PER AMBIENTI AIR-GAPPED:
+ *    Se vuoi forzare un IP fisso senza variabili d'ambiente, decommenta la riga sotto:
+ *    // return 'http://192.168.1.150:8080/api/v1';
  */
 function resolveApiBaseUrl(): string {
-  // Se la variabile d'ambiente è esplicitamente valorizzata (es. da .env o eas.json), è la source of truth
+  // 1. Variabile d'ambiente esplicita (.env o eas.json)
   const envUrl = process.env.EXPO_PUBLIC_API_URL;
   if (envUrl && envUrl.trim() !== '') {
     return envUrl;
   }
 
-  // Se siamo in modalità development con Metro attivo, estrai l'IP host del computer
+  // 2. Rilevamento automatico IP host LAN da Expo Metro Bundler
   const hostUri = Constants.expoConfig?.hostUri;
   if (__DEV__ && hostUri) {
     const ip = hostUri.split(':')[0];
     if (ip) {
-      return `http://${ip}:3000/api/v1`;
+      // In Local-Edition l'API su Docker Compose risponde su porta 8080
+      return `http://${ip}:8080/api/v1`;
     }
   }
 
-  // Fallback sicuro su porta 3000 (standard NestJS)
-  return 'http://10.0.2.2:3000/api/v1';
+  // 3. Fallback standard per emulatore Android su porta 8080
+  return 'http://10.0.2.2:8080/api/v1';
 }
 
 export const API_BASE_URL = resolveApiBaseUrl();

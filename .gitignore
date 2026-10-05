@@ -51,6 +51,8 @@ $RECYCLE.BIN/
 # Consenti esplicitamente i template documentati
 !.env.example
 !**/.env.example
+!*.env*.example
+!**/*.env*.example
 
 # Certificati TLS, chiavi private, token Cloudflare e SSH
 *.pem

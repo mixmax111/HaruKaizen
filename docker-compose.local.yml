@@ -1,0 +1,123 @@
+services:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 1. DATABASE (PostgreSQL 17 Alpine)
+  # ─────────────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:17-alpine
+    container_name: hk-postgres-local
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-harukaizen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-harukaizen_local_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-harukaizen_db}
+    volumes:
+      - postgres_local_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U harukaizen -d harukaizen_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend-network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 2. CACHE DISTRIBUITA & RATE LIMITING (Redis 7 Alpine)
+  # ─────────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: hk-redis-local
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_local_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend-network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 3. BACKEND CORE (NestJS REST API)
+  # Esposto esplicitamente su porta 8080 per accesso da rete locale / smartphone
+  # ─────────────────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: hk-api-local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      DATABASE_URL: postgresql://${POSTGRES_USER:-harukaizen}:${POSTGRES_PASSWORD:-harukaizen_local_secret}@postgres:5432/${POSTGRES_DB:-harukaizen_db}?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-harukaizen_super_secure_local_jwt_secret_32_chars_min}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-harukaizen_super_secure_local_refresh_secret_32_chars_min}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+    volumes:
+      - uploads_local_data:/app/uploads/progress
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend-network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 4. FRONTEND WEB (Next.js 16 Dashboard)
+  # Esposto esplicitamente su porta 3000 per accesso locale da browser
+  # ─────────────────────────────────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: hk-web-local
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080/api/v1}
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend-network
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RETE LOCALE BRIDGE & VOLUMI PERSISTENTI
+# ─────────────────────────────────────────────────────────────────────────────
+networks:
+  backend-network:
+    name: hk-backend-network-local
+    driver: bridge
+
+volumes:
+  postgres_local_data:
+    name: hk-postgres-local-data
+  redis_local_data:
+    name: hk-redis-local-data
+  uploads_local_data:
+    name: hk-uploads-local-data
+
