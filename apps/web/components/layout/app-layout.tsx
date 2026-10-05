@@ -1,13 +1,31 @@
-﻿import React from 'react';
+import React from 'react';
 import { Sidebar } from './sidebar';
+import { TopHeader } from './top-header';
 
-export function AppLayout({ children }: { children: React.ReactNode }) {
+interface AppLayoutProps {
+  children: React.ReactNode;
+  breadcrumbs?: string[];
+  onQuickLog?: () => void;
+}
+
+export function AppLayout({
+  children,
+  breadcrumbs,
+  onQuickLog,
+}: AppLayoutProps) {
   return (
-    <div className="flex min-h-screen bg-[#0b0f17] text-slate-100">
+    <div className="min-h-screen bg-surface-container-lowest text-on-surface font-body-md text-body-md selection:bg-primary selection:text-on-primary">
+      {/* Fixed Telemetry Sidebar */}
       <Sidebar />
-      <main className="flex-1 p-6 md:p-8 max-w-7xl mx-auto mb-16 md:mb-0 w-full overflow-y-auto">
-        {children}
-      </main>
+
+      {/* Main Content Area (offset by sidebar width 72 / 18rem) */}
+      <div className="pl-72">
+        <TopHeader breadcrumbs={breadcrumbs} onQuickLog={onQuickLog} />
+        <main className="w-full pt-16 px-margin-desktop min-h-screen bg-surface-container-lowest">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
+

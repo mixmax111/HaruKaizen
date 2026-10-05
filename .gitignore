@@ -1,68 +1,262 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# 🌸 HaruKaizen — Git Ignore Configuration
+# 🌸 HaruKaizen — Monorepo Master Git Ignore
+# ─────────────────────────────────────────────────────────────────────────────
+# Stack: Next.js 16 (Web), NestJS (API), React Native / Expo SDK 52 (Mobile)
+# Architettura: Monorepo npm workspaces, Docker, PostgreSQL, Redis, Offline-First
 # ─────────────────────────────────────────────────────────────────────────────
 
-# File di sistema e OS
+# =============================================================================
+# 1. FILE DI SISTEMA & OS METADATA
+# =============================================================================
+# macOS
 .DS_Store
-Thumbs.db
-Desktop.ini
-*.tmp
-*.bak
-*.swp
-*~
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
 
-# Variabili d'ambiente e segreti (MAI committare file di configurazione con segreti reali)
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# =============================================================================
+# 2. VARIABILI D'AMBIENTE, SEGRETI & CERTIFICATI CRITTOGRAFICI
+# =============================================================================
+# ATTENZIONE: Nessun file .env con credenziali reali deve MAI essere committato
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+*.env
+*.env.*
 **/.env
 **/.env.local
 **/.env.*.local
-*.env
-*.env.*
+**/*.env
+**/*.env.*
 
-# Consenti esplicitamente i file template di esempio
+# Consenti esplicitamente i template documentati
 !.env.example
 !**/.env.example
 
-# Dipendenze
+# Certificati TLS, chiavi private, token Cloudflare e SSH
+*.pem
+*.key
+*.crt
+*.cer
+*.der
+*.pfx
+*.p12
+*.token
+*.tunnel.json
+cert.pem
+id_rsa*
+id_ed25519*
+
+# =============================================================================
+# 3. GESTORE PACCHETTI & DIPENDENZE
+# =============================================================================
 node_modules/
 **/node_modules/
+
+# Logs di debug gestori pacchetti
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
 
-# Compilazione ed Output di Build
+# Yarn v2+ PnP (se utilizzato)
+.pnp
+.pnp.*
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# =============================================================================
+# 4. OUTPUT DI COMPILAZIONE & MONOREPO BUILD CACHE
+# =============================================================================
 dist/
 **/dist/
 build/
 **/build/
 out/
 **/out/
+web-build/
+**/web-build/
+
+# Turbo & TypeScript Build Info Cache
+.turbo/
+**/.turbo/
 *.tsbuildinfo
 **/*.tsbuildinfo
+.swc/
 
-# Next.js (Web Dashboard)
+# =============================================================================
+# 5. FRONTEND WEB — Next.js 16 App Router (apps/web)
+# =============================================================================
 .next/
+**/.next/
 apps/web/.next/
 apps/web/out/
+apps/web/build/
 
-# Expo & React Native (Mobile App)
+# Vercel deployment cache
+.vercel/
+**/.vercel/
+apps/web/.vercel/
+
+# Bundle analyzer report
+.next/analyze/
+apps/web/.next/analyze/
+
+# =============================================================================
+# 6. BACKEND API — NestJS & TypeScript (apps/api)
+# =============================================================================
+apps/api/dist/
+apps/api/build/
+apps/api/logs/
+apps/api/.turbo/
+
+# Process ID & Runtime locks
+pids/
+*.pid
+*.seed
+*.pid.lock
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# =============================================================================
+# 7. PRISMA ORM & DATABASE LOCALE
+# =============================================================================
+# Database locali SQLite / Cache WAL
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+dev.db
+dev.db-journal
+
+# Prisma generated client personalizzati (fuori da node_modules)
+prisma/generated/
+apps/api/prisma/generated/
+
+# =============================================================================
+# 8. MOBILE APP — React Native & Expo SDK 52 (apps/mobile)
+# =============================================================================
+# Expo CLI & Metro Bundler
 .expo/
+**/.expo/
 apps/mobile/.expo/
+.expo-shared/
+**/.expo-shared/
+apps/mobile/.expo-shared/
+.metro-health-check*
+
+# Cartelle Native generate da "npx expo prebuild" (se in modalità bare/managed)
 apps/mobile/android/
 apps/mobile/ios/
-web-build/
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
 
-# Testing, Copertura e Playwright E2E
+# Bundle JavaScript compilati & Sourcemaps
+*.bundle
+*.bundle.map
+
+# Android Build Outputs & Keystores di firma
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+*.aar
+*.jks
+*.keystore
+apps/mobile/*.jks
+apps/mobile/*.keystore
+.gradle/
+**/android/.gradle/
+**/android/app/build/
+**/android/build/
+
+# iOS Build Outputs & Certificati Apple
+*.ipa
+*.app
+*.dSYM.zip
+*.dSYM
+*.p8
+*.mobileprovision
+apps/mobile/*.p8
+apps/mobile/*.mobileprovision
+**/ios/Pods/
+**/ios/build/
+**/ios/DerivedData/
+
+# Credenziali Push / Google / Firebase (Anti-Leak)
+credentials.json
+apps/mobile/credentials.json
+google-services.json
+apps/mobile/google-services.json
+GoogleService-Info.plist
+apps/mobile/GoogleService-Info.plist
+
+# =============================================================================
+# 9. PACKAGES CONDIVISI (packages/*)
+# =============================================================================
+packages/*/dist/
+packages/*/build/
+packages/*/.turbo/
+packages/*/*.tsbuildinfo
+
+# =============================================================================
+# 10. UPLOADS LOCALI & STORAGE (Foto Progressi, Ghosting Media)
+# =============================================================================
+uploads/**
+!uploads/**/
+!**/.gitkeep
+storage/**
+!storage/**/
+
+# =============================================================================
+# 11. DOCKER, DUMP DATABASE & STRATEGIA BACKUP
+# =============================================================================
+# Volumi dati Docker montati in locale
+docker-data/
+db-data/
+postgres-data/
+redis-data/
+
+# Backup periodici PostgreSQL (esclusi per non appesantire la repo)
+backups/
+**/backups/
+*.sql
+*.sql.gz
+*.dump
+*.tar.gz
+
+# Consenti eventuali fixture seed esplicite se create in cartelle dedicate
+!prisma/seeds/*.sql
+!apps/api/prisma/seeds/*.sql
+
+# =============================================================================
+# 12. TESTING, CODE COVERAGE & REPORT E2E
+# =============================================================================
 coverage/
 **/coverage/
 .nyc_output/
@@ -72,8 +266,12 @@ playwright-report/
 **/playwright-report/
 blob-report/
 playwright/.cache/
+.vitest/
+**/.vitest/
 
-# Cache, Log e File Temporanei
+# =============================================================================
+# 13. LOG, CACHE & FILE TEMPORANEI
+# =============================================================================
 *.log
 logs/
 **/logs/
@@ -82,19 +280,40 @@ logs/
 tmp/
 temp/
 .temp/
+.tmp/
+**/*.tmp
+**/*.bak
+**/*.swp
 
-# Upload Locali e Backup Database
-uploads/
-**/uploads/
-backups/
-**/backups/
-*.sql.gz
-*.dump
-
-# IDE e Editor
-.idea/
+# =============================================================================
+# 14. IDE, EDITOR & TOOLING SVILUPPO
+# =============================================================================
+# Visual Studio Code (consenti file di configurazione del team)
 .vscode/*
-!.vscode/extensions.json
 !.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# JetBrains / WebStorm / Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+cmake-build-*/
+
+# Sublime Text
 *.sublime-project
 *.sublime-workspace
+
+# Editor di testo console (Vim / Emacs)
+*.swo
+*.swp
+*.swn
+.#*
+
+# =============================================================================
+# 15. CARTELLA MOCKUP & ASSET DI DESIGN LOCALI
+# =============================================================================
+# Cartella mockup HTML/Tailwind utilizzata durante la fase iniziale di design
+html/

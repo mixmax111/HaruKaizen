@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { FoodService } from './food.service.js';
 import { CreateFoodItemDto } from './dto/create-food-item.dto.js';
 
-@Controller('food')
+@Controller(['food', 'nutrition/food'])
 export class FoodController {
   constructor(private readonly foodService: FoodService) {}
 

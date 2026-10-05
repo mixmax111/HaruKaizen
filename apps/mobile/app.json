@@ -1,4 +1,4 @@
-﻿{
+{
   "expo": {
     "name": "HaruKaizen",
     "slug": "harukaizen",
@@ -39,7 +39,8 @@
         {
           "cameraPermission": "Consenti ad HaruKaizen di accedere alla fotocamera per lo scanner barcode e le foto comparative dei progressi fisici."
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

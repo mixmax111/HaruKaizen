@@ -1,4 +1,4 @@
-﻿import Constants from 'expo-constants';
+import Constants from 'expo-constants';
 
 /**
  * Risoluzione Intelligente dell'URL Backend:
@@ -29,15 +29,24 @@ function resolveApiBaseUrl(): string {
 export const API_BASE_URL = resolveApiBaseUrl();
 
 export const COLORS = {
-  background: '#09090b', // Dark zinc profondo
-  card: '#18181b',       // Dark zinc card
-  cardBorder: '#27272a',
-  primary: '#10b981',    // Emerald HaruKaizen
-  primaryDark: '#059669',
-  secondary: '#f59e0b',  // Amber
-  accent: '#6366f1',     // Indigo
+  background: '#0d0e15',       // Deepest Dark Surface
+  surface: '#12131a',          // Surface Main
+  card: '#1a1b22',             // Card Container Low
+  cardContainer: '#1e1f26',    // Card Container High
+  cardBorder: '#27272a',       // Subtle Border
+  cardBorderGlow: '#3c4a42',   // Terminal Emerald Tint Border
+  primary: '#4edea3',          // Phosphor Emerald Telemetry
+  primaryContainer: '#10b981', // Solid Emerald
+  primaryDark: '#005236',
+  secondary: '#c0c1ff',        // Indigo Telemetry
+  secondaryContainer: '#3131c0',
+  accent: '#c0c1ff',           // Telemetry Accent
+  tertiary: '#ffb2b7',         // Coral Accent
+  tertiaryContainer: '#ff7886',
   danger: '#ef4444',
-  text: '#f4f4f5',
-  textMuted: '#a1a1aa',
-  textDim: '#71717a',
+  text: '#e3e1ec',             // On-Surface High Contrast
+  textMuted: '#bbcabf',        // Monospace Muted
+  textDim: '#86948a',          // Outline Dim
+  outline: '#86948a',
+  outlineVariant: '#3c4a42',
 };

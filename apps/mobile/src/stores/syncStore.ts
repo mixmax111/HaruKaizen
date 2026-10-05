@@ -1,7 +1,7 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueuedWorkoutLog, QueuedPhotoUpload, QueuedNutritionLog } from '../types/sync';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import { API_BASE_URL } from '../config';
 import { syncTracer, SyncLogEntry } from '../utils/syncTracer';
 

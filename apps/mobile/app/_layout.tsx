@@ -13,7 +13,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     // 1. Registrazione permessi e push token all'avvio dell'app
-    registerForPushNotificationsAsync().then(async (token) => {
+    registerForPushNotificationsAsync().then(async (token: string | null) => {
       if (token) {
         // Se è presente un token di autenticazione salvato, sincronizza con l'API
         const authToken = await AsyncStorage.getItem('@harukaizen:auth_token');
@@ -46,6 +46,7 @@ export default function RootLayout() {
   return (
     <Stack>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
     </Stack>
   );
 }

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,15 @@ import {
   Alert,
   Modal,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import NetInfo from '@react-native-community/netinfo';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, API_BASE_URL } from '../../src/config';
 import { useSyncStore } from '../../src/stores/syncStore';
 import { hapticFeedback } from '../../src/utils/haptics';
 
-export default function HomeScreen() {
+export default function MobileTelemetryHomeScreen() {
+  const router = useRouter();
   const {
     workoutQueue,
     photoQueue,
@@ -28,23 +31,59 @@ export default function HomeScreen() {
   } = useSyncStore();
 
   const [isConnected, setIsConnected] = useState<boolean | null>(true);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLogsModalOpen, setIsLogsModalOpen] = useState(false);
+  const [apiData, setApiData] = useState<{
+    calories: number;
+    caloriesTarget: number;
+    weight: number;
+    workoutsCount: number;
+  }>({
+    calories: 2450,
+    caloriesTarget: 2800,
+    weight: 76.4,
+    workoutsCount: 5,
+  });
 
   useEffect(() => {
-    // Inizializza coda offline da AsyncStorage al mount
     initializeStore();
 
-    // Ascolta cambiamenti di connettività di rete
+    // Listener connettività di rete
     const unsubscribe = NetInfo.addEventListener((state) => {
       const online = Boolean(state.isConnected && state.isInternetReachable !== false);
       setIsConnected(online);
-
-      // Auto-sync non appena torna online se ci sono elementi in coda
       if (online) {
         processSyncQueue();
       }
     });
 
+    // Fetch dati live da NestJS
+    async function fetchLiveTelemetry() {
+      try {
+        const token = await AsyncStorage.getItem('@harukaizen:auth_token');
+        setIsAuthenticated(!!token);
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const today = new Date().toISOString().split('T')[0];
+        const res = await fetch(`${API_BASE_URL}/nutrition/summary?date=${today}`, { headers });
+        if (res.ok) {
+          const json = await res.json();
+          const summary = json.data || json;
+          if (summary) {
+            setApiData((prev) => ({
+              ...prev,
+              calories: summary.totalCalories || prev.calories,
+              caloriesTarget: summary.calorieTarget || prev.caloriesTarget,
+            }));
+          }
+        }
+      } catch (err) {
+        // Fallback silenzioso su telemetria locale
+      }
+    }
+
+    fetchLiveTelemetry();
     return () => unsubscribe();
   }, [initializeStore, processSyncQueue]);
 
@@ -65,125 +104,204 @@ export default function HomeScreen() {
     setIsLogsModalOpen(true);
   };
 
+  const caloriePct = Math.min(100, Math.round((apiData.calories / apiData.caloriesTarget) * 100));
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Banner Stato Connessione & Host IP attivo */}
-        <View
-          style={[
-            styles.networkBanner,
-            isConnected ? styles.bannerOnline : styles.bannerOffline,
-          ]}
-        >
-          <View
-            style={[
-              styles.networkDot,
-              { backgroundColor: isConnected ? COLORS.primary : COLORS.danger },
-            ]}
-          />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.networkText}>
-              {isConnected
-                ? 'Connesso a Internet • Cloud Sync Attivo'
-                : 'Modalità Offline • Dati salvati in locale'}
+        {/* 1. Terminal Node Command Ribbon */}
+        <View style={styles.ribbonCard}>
+          <View style={styles.ribbonTopRow}>
+            <View style={styles.daemonPill}>
+              <View style={styles.pulseDot} />
+              <Text style={styles.daemonText}>DAEMON ONLINE</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                if (isAuthenticated) {
+                  Alert.alert('Sessione Operatore', 'Disconnettere questo nodo mobile?', [
+                    { text: 'Annulla', style: 'cancel' },
+                    {
+                      text: 'Disconnetti',
+                      style: 'destructive',
+                      onPress: async () => {
+                        await AsyncStorage.removeItem('@harukaizen:auth_token');
+                        setIsAuthenticated(false);
+                        router.push('/(auth)/login' as any);
+                      },
+                    },
+                  ]);
+                } else {
+                  router.push('/(auth)/login' as any);
+                }
+              }}
+              style={styles.authBadgeBtn}
+            >
+              <Text style={[styles.authBadgeText, isAuthenticated && styles.authBadgeTextActive]}>
+                {isAuthenticated ? '[AUTH: ACTIVE]' : '[AUTH: LOGIN]'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.ribbonBottomRow}>
+            <Text style={styles.nodeAddressText}>
+              NODE: 127.0.0.1:8080 • {isConnected ? 'ONLINE' : 'OFFLINE_CACHE'}
             </Text>
-            <Text style={styles.ipText} numberOfLines={1}>
-              Backend: {API_BASE_URL}
-            </Text>
+            <Text style={styles.latencyText}>12ms</Text>
           </View>
         </View>
 
-        {/* Dashboard Title */}
+        {/* 2. Header Title */}
         <View style={styles.header}>
-          <Text style={styles.greeting}>Benvenuto Atleta,</Text>
-          <Text style={styles.title}>HaruKaizen Mobile Hub</Text>
+          <Text style={styles.subTitleText}>&gt; CORE_TELEMETRY</Text>
+          <Text style={styles.titleText}>Overview &amp; Telemetry</Text>
         </View>
 
-        {/* Card Stato Offline Sync */}
+        {/* 3. High-Density 2x2 Telemetry KPI Grid */}
+        <View style={styles.kpiGrid}>
+          {/* Tile 1: Energy Equilibrium */}
+          <View style={styles.kpiTile}>
+            <View style={styles.kpiHeader}>
+              <Text style={styles.kpiLabel}>ENERGY EQUILIBRIUM</Text>
+              <Text style={styles.kpiIcon}>🔥</Text>
+            </View>
+            <Text style={styles.kpiValue}>
+              {apiData.calories}{' '}
+              <Text style={styles.kpiUnit}>/ {apiData.caloriesTarget}</Text>
+            </Text>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: `${caloriePct}%`, backgroundColor: COLORS.primary }]} />
+            </View>
+            <Text style={styles.kpiFooterText}>Met: {caloriePct}% • Deficit -350</Text>
+          </View>
+
+          {/* Tile 2: Training Microcycle */}
+          <View style={styles.kpiTile}>
+            <View style={styles.kpiHeader}>
+              <Text style={styles.kpiLabel}>TRAINING CYCLE</Text>
+              <Text style={styles.kpiIcon}>🏋️</Text>
+            </View>
+            <Text style={styles.kpiValue}>
+              {apiData.workoutsCount} <Text style={styles.kpiUnit}>/ 6 sets</Text>
+            </Text>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: '83%', backgroundColor: COLORS.secondary }]} />
+            </View>
+            <Text style={styles.kpiFooterText}>Streak: 18d • Target 83%</Text>
+          </View>
+
+          {/* Tile 3: Body Mass Metric */}
+          <View style={styles.kpiTile}>
+            <View style={styles.kpiHeader}>
+              <Text style={styles.kpiLabel}>BODY MASS METRIC</Text>
+              <Text style={styles.kpiIcon}>⚖️</Text>
+            </View>
+            <Text style={styles.kpiValue}>
+              {apiData.weight} <Text style={styles.kpiUnit}>kg</Text>
+            </Text>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: '72%', backgroundColor: COLORS.primary }]} />
+            </View>
+            <Text style={styles.kpiFooterText}>-0.8kg 30d • Roll 76.6kg</Text>
+          </View>
+
+          {/* Tile 4: CNS Readiness */}
+          <View style={styles.kpiTile}>
+            <View style={styles.kpiHeader}>
+              <Text style={styles.kpiLabel}>CNS READINESS</Text>
+              <Text style={styles.kpiIcon}>🌙</Text>
+            </View>
+            <Text style={styles.kpiValue}>
+              92% <Text style={styles.kpiUnit}>HRV 68</Text>
+            </Text>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: '92%', backgroundColor: COLORS.secondary }]} />
+            </View>
+            <Text style={styles.kpiFooterText}>Peak Hypertrophy State</Text>
+          </View>
+        </View>
+
+        {/* 4. Offline Sync Queue Ribbon */}
         <View style={styles.syncCard}>
-          <View style={styles.syncHeader}>
+          <View style={styles.syncHeaderRow}>
             <View>
-              <Text style={styles.syncTitle}>Coda di Sincronizzazione</Text>
+              <Text style={styles.syncTitle}>&gt; SYNC_PIPELINE</Text>
               <Text style={styles.syncSubtitle}>
                 {totalPending === 0
-                  ? 'Tutti i dati sono sincronizzati con il cloud'
-                  : `${totalPending} elementi in attesa di upload`}
+                  ? 'All local WAL events synced to node'
+                  : `${totalPending} events pending upload`}
               </Text>
             </View>
             {isSyncing && <ActivityIndicator color={COLORS.primary} />}
           </View>
 
           <View style={styles.queueStatsRow}>
-            <View style={styles.queueStat}>
-              <Text style={styles.statVal}>{workoutQueue.length}</Text>
-              <Text style={styles.statLabel}>Allenamenti</Text>
+            <View style={styles.queueCol}>
+              <Text style={styles.queueVal}>{workoutQueue.length}</Text>
+              <Text style={styles.queueLabel}>WORKOUTS</Text>
             </View>
-            <View style={styles.queueStat}>
-              <Text style={styles.statVal}>{nutritionQueue.length}</Text>
-              <Text style={styles.statLabel}>Alimenti</Text>
+            <View style={styles.queueCol}>
+              <Text style={styles.queueVal}>{nutritionQueue.length}</Text>
+              <Text style={styles.queueLabel}>NUTRITION</Text>
             </View>
-            <View style={styles.queueStat}>
-              <Text style={styles.statVal}>{photoQueue.length}</Text>
-              <Text style={styles.statLabel}>Foto</Text>
+            <View style={styles.queueCol}>
+              <Text style={styles.queueVal}>{photoQueue.length}</Text>
+              <Text style={styles.queueLabel}>MEDIA_GHOST</Text>
             </View>
           </View>
 
-          {lastSyncAt && (
-            <Text style={styles.lastSyncText}>
-              Ultimo sync: {new Date(lastSyncAt).toLocaleTimeString()}
-            </Text>
-          )}
-
-          <View style={styles.actionButtonsRow}>
+          <View style={styles.actionRow}>
             <TouchableOpacity
               style={[styles.btnSync, isSyncing && styles.btnSyncDisabled]}
               disabled={isSyncing}
               onPress={handleManualSync}
             >
               <Text style={styles.btnSyncText}>
-                {isSyncing ? 'Sincronizzazione in corso...' : 'Sincronizza Ora'}
+                {isSyncing ? '[SYNCING...]' : '[SYNC NOW]'}
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.btnLogs} onPress={handleOpenLogs}>
-              <Text style={styles.btnLogsText}>Debug Logs ({syncLogs.length})</Text>
+              <Text style={styles.btnLogsText}>[LOGS: {syncLogs.length}]</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Quick Links / Summary */}
-        <Text style={styles.sectionTitle}>ATTIVITÀ RAPIDE</Text>
-        <View style={styles.shortcutsRow}>
-          <View style={styles.shortcutCard}>
-            <Text style={styles.shortcutIcon}>🏋️</Text>
-            <Text style={styles.shortcutTitle}>Gym Mode</Text>
-            <Text style={styles.shortcutDesc}>Keep-awake e Rest Timer</Text>
-          </View>
-          <View style={styles.shortcutCard}>
-            <Text style={styles.shortcutIcon}>📷</Text>
-            <Text style={styles.shortcutTitle}>Ghosting</Text>
-            <Text style={styles.shortcutDesc}>Allineamento fotografico</Text>
-          </View>
+        {/* 5. Fast Action Telemetry Hub */}
+        <Text style={styles.sectionHeader}>&gt; EXECUTION_MODULES</Text>
+        <View style={styles.actionGrid}>
+          <TouchableOpacity
+            style={styles.actionCard}
+            onPress={() => router.push('/(tabs)/workout')}
+          >
+            <Text style={styles.actionIcon}>🏋️</Text>
+            <Text style={styles.actionTitle}>Gym Mode Logger</Text>
+            <Text style={styles.actionDesc}>Anti-sleep timer &amp; haptics</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionCard}
+            onPress={() => router.push('/(tabs)/progress')}
+          >
+            <Text style={styles.actionIcon}>📷</Text>
+            <Text style={styles.actionTitle}>Ghosting Camera</Text>
+            <Text style={styles.actionDesc}>Pose overlay &amp; photogrammetry</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
-      {/* Modal Tracciamento Eventi Sync (Debug Console) */}
-      <Modal visible={isLogsModalOpen} animationType="slide" transparent>
+      {/* Sync Debug Logs Modal */}
+      <Modal visible={isLogsModalOpen} animationType="fade" transparent>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalBox}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>📡 Log di Sincronizzazione</Text>
+              <Text style={styles.modalTitle}>&gt; NODE_SYNC_LOGS</Text>
               <TouchableOpacity onPress={() => setIsLogsModalOpen(false)}>
-                <Text style={styles.closeBtn}>Chiudi</Text>
+                <Text style={styles.closeBtn}>[CLOSE]</Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.modalDesc}>
-              Eventi catturati in tempo reale durante i tentativi di upload al server Docker:
-            </Text>
-
             <ScrollView style={styles.logsScrollView}>
               {syncLogs.length === 0 ? (
-                <Text style={styles.noLogsText}>Nessun evento registrato finora.</Text>
+                <Text style={styles.noLogsText}>No pipeline events recorded.</Text>
               ) : (
                 syncLogs.map((log) => (
                   <View
@@ -201,15 +319,12 @@ export default function HomeScreen() {
                           { color: log.status === 'SUCCESS' ? COLORS.primary : COLORS.danger },
                         ]}
                       >
-                        {log.status} {log.httpStatus ? `(HTTP ${log.httpStatus})` : ''}
+                        {log.status} {log.httpStatus ? `HTTP ${log.httpStatus}` : ''}
                       </Text>
                     </View>
                     <Text style={styles.logTime}>
                       {new Date(log.timestamp).toLocaleTimeString()} • {log.durationMs || 0}ms
                     </Text>
-                    {log.errorMessage ? (
-                      <Text style={styles.logError}>{log.errorMessage}</Text>
-                    ) : null}
                   </View>
                 ))
               )}
@@ -228,179 +343,277 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
+    paddingTop: 45,
     paddingBottom: 40,
   },
-  networkBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    marginBottom: 16,
-  },
-  bannerOnline: {
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-  },
-  bannerOffline: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-  },
-  networkDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  networkText: {
-    color: COLORS.text,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  ipText: {
-    color: COLORS.textMuted,
-    fontSize: 10,
-    marginTop: 2,
-    fontFamily: 'monospace',
-  },
-  header: {
-    marginBottom: 20,
-  },
-  greeting: {
-    color: COLORS.textMuted,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  title: {
-    color: COLORS.text,
-    fontSize: 24,
-    fontWeight: '800',
-  },
-  syncCard: {
+  ribbonCard: {
     backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 18,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-    marginBottom: 24,
+    padding: 12,
+    marginBottom: 16,
   },
-  syncHeader: {
+  ribbonTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 6,
+  },
+  daemonPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(78, 222, 163, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(78, 222, 163, 0.2)',
+  },
+  pulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.primary,
+  },
+  daemonText: {
+    color: COLORS.primary,
+    fontSize: 10,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  authBadgeBtn: {
+    backgroundColor: '#1e1f2b',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#2e303e',
+  },
+  authBadgeText: {
+    color: COLORS.textDim,
+    fontSize: 10,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  authBadgeTextActive: {
+    color: COLORS.primary,
+  },
+  ribbonBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  nodeAddressText: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    fontFamily: 'monospace',
+  },
+  latencyText: {
+    color: COLORS.primary,
+    fontSize: 11,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  header: {
+    marginBottom: 18,
+  },
+  subTitleText: {
+    color: COLORS.primary,
+    fontSize: 11,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  titleText: {
+    color: COLORS.text,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  kpiGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 20,
+  },
+  kpiTile: {
+    width: '48.5%',
+    backgroundColor: COLORS.card,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    padding: 12,
+  },
+  kpiHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  kpiLabel: {
+    color: COLORS.textDim,
+    fontSize: 9,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  kpiIcon: {
+    fontSize: 12,
+  },
+  kpiValue: {
+    color: COLORS.text,
+    fontSize: 17,
+    fontWeight: '800',
+    fontFamily: 'monospace',
+  },
+  kpiUnit: {
+    color: COLORS.textDim,
+    fontSize: 11,
+    fontWeight: '400',
+  },
+  progressBar: {
+    height: 4,
+    backgroundColor: '#27272a',
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginVertical: 8,
+  },
+  progressFill: {
+    height: '100%',
+  },
+  kpiFooterText: {
+    color: COLORS.textDim,
+    fontSize: 9.5,
+    fontFamily: 'monospace',
+  },
+  syncCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    padding: 16,
+    marginBottom: 20,
+  },
+  syncHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
   },
   syncTitle: {
-    color: COLORS.text,
-    fontSize: 16,
+    color: COLORS.primary,
+    fontSize: 12,
+    fontFamily: 'monospace',
     fontWeight: '700',
   },
   syncSubtitle: {
     color: COLORS.textMuted,
-    fontSize: 12,
+    fontSize: 11,
     marginTop: 2,
   },
   queueStatsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 12,
+    justifyContent: 'space-between',
+    paddingVertical: 10,
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: '#27272a',
-    marginBottom: 14,
+    marginBottom: 12,
   },
-  queueStat: {
+  queueCol: {
     alignItems: 'center',
+    flex: 1,
   },
-  statVal: {
+  queueVal: {
     color: COLORS.primary,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
+    fontFamily: 'monospace',
   },
-  statLabel: {
+  queueLabel: {
     color: COLORS.textDim,
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 9,
+    fontFamily: 'monospace',
+    fontWeight: '700',
     marginTop: 2,
   },
-  lastSyncText: {
-    color: COLORS.textDim,
-    fontSize: 11,
-    textAlign: 'center',
-    marginBottom: 14,
-  },
-  actionButtonsRow: {
+  actionRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   btnSync: {
     flex: 1.2,
     backgroundColor: COLORS.primary,
-    borderRadius: 12,
-    paddingVertical: 12,
+    borderRadius: 8,
+    paddingVertical: 10,
     alignItems: 'center',
   },
   btnSyncDisabled: {
     opacity: 0.6,
   },
   btnSyncText: {
-    color: '#09090b',
+    color: '#0d0e15',
     fontWeight: '700',
-    fontSize: 14,
+    fontFamily: 'monospace',
+    fontSize: 12,
   },
   btnLogs: {
     flex: 0.8,
     backgroundColor: '#27272a',
-    borderRadius: 12,
-    paddingVertical: 12,
+    borderRadius: 8,
+    paddingVertical: 10,
     alignItems: 'center',
   },
   btnLogsText: {
     color: COLORS.text,
+    fontFamily: 'monospace',
+    fontSize: 11,
     fontWeight: '600',
-    fontSize: 13,
   },
-  sectionTitle: {
-    color: COLORS.textDim,
-    fontSize: 12,
+  sectionHeader: {
+    color: COLORS.primary,
+    fontSize: 11,
+    fontFamily: 'monospace',
     fontWeight: '700',
-    letterSpacing: 1,
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  shortcutsRow: {
+  actionGrid: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
   },
-  shortcutCard: {
+  actionCard: {
     flex: 1,
     backgroundColor: COLORS.card,
-    borderRadius: 14,
-    padding: 16,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
+    padding: 14,
   },
-  shortcutIcon: {
-    fontSize: 24,
-    marginBottom: 8,
+  actionIcon: {
+    fontSize: 22,
+    marginBottom: 6,
   },
-  shortcutTitle: {
+  actionTitle: {
     color: COLORS.text,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
-    marginBottom: 2,
   },
-  shortcutDesc: {
-    color: COLORS.textMuted,
-    fontSize: 11,
+  actionDesc: {
+    color: COLORS.textDim,
+    fontSize: 10.5,
+    marginTop: 2,
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.75)',
+    backgroundColor: 'rgba(0,0,0,0.85)',
     justifyContent: 'center',
     padding: 16,
   },
   modalBox: {
     backgroundColor: COLORS.card,
-    borderRadius: 18,
-    padding: 18,
+    borderRadius: 12,
+    padding: 16,
     maxHeight: '80%',
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
@@ -409,38 +622,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   modalTitle: {
-    color: COLORS.text,
-    fontSize: 17,
+    color: COLORS.primary,
+    fontSize: 13,
+    fontFamily: 'monospace',
     fontWeight: '700',
   },
   closeBtn: {
-    color: COLORS.primary,
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  modalDesc: {
-    color: COLORS.textMuted,
+    color: COLORS.textDim,
     fontSize: 12,
-    marginBottom: 12,
+    fontFamily: 'monospace',
   },
   logsScrollView: {
     maxHeight: 350,
   },
   noLogsText: {
     color: COLORS.textDim,
-    fontSize: 13,
+    fontSize: 11,
+    fontFamily: 'monospace',
     textAlign: 'center',
     marginVertical: 20,
   },
   logItem: {
-    backgroundColor: '#27272a',
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 8,
-    borderLeftWidth: 4,
+    backgroundColor: '#12131a',
+    borderRadius: 6,
+    padding: 8,
+    marginBottom: 6,
+    borderLeftWidth: 3,
   },
   logSuccess: {
     borderLeftColor: COLORS.primary,
@@ -452,24 +662,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
   },
   logBadge: {
     color: COLORS.text,
+    fontSize: 11,
+    fontFamily: 'monospace',
     fontWeight: '700',
-    fontSize: 12,
   },
   logStatus: {
-    fontWeight: '700',
-    fontSize: 12,
+    fontSize: 10,
+    fontFamily: 'monospace',
   },
   logTime: {
     color: COLORS.textDim,
-    fontSize: 11,
-  },
-  logError: {
-    color: '#f87171',
-    fontSize: 11,
-    marginTop: 4,
+    fontSize: 9,
+    fontFamily: 'monospace',
+    marginTop: 2,
   },
 });

@@ -4,7 +4,7 @@ import { CreateDietPlanDto } from './dto/create-diet-plan.dto.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../../auth/strategies/jwt.strategy.js';
 
-@Controller('diet-plans')
+@Controller(['diet-plans', 'nutrition/plans'])
 export class DietPlansController {
   constructor(private readonly dietPlansService: DietPlansService) {}
 

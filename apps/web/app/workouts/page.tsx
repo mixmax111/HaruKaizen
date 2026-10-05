@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useEffect, useState } from 'react';
 import { AppLayout } from '../../components/layout/app-layout';
@@ -15,8 +15,8 @@ export default function WorkoutsPage() {
   const fetchWorkouts = async () => {
     try {
       const [plansRes, logsRes] = await Promise.all([
-        apiClient.get('/workout-plans'),
-        apiClient.get('/workouts/logs'),
+        apiClient.get('/workout/plans'),
+        apiClient.get('/workout/logs'),
       ]);
       setPlans(plansRes.data.data || []);
       setLogs(logsRes.data.data || []);
@@ -30,7 +30,7 @@ export default function WorkoutsPage() {
   }, []);
 
   const handleActivatePlan = async (planId: string) => {
-    await apiClient.post(`/workout-plans/${planId}/activate`);
+    await apiClient.post(`/workout/plans/${planId}/activate`);
     fetchWorkouts();
   };
 
@@ -55,7 +55,7 @@ export default function WorkoutsPage() {
       exercises: daysMap[dayName],
     }));
 
-    await apiClient.post('/workout-plans', {
+    await apiClient.post('/workout/plans', {
       name: 'Nuova Scheda Importata',
       isActive: true,
       workoutDays,
