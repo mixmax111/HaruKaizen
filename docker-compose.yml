@@ -1,0 +1,51 @@
+services:
+  # ─────────────────────────────────────────
+  # 1. REVERSE PROXY (TRAEFIK)
+  # ─────────────────────────────────────────
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik-proxy
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"     # HTTP
+      - "8080:8080" # Dashboard Traefik
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # ─────────────────────────────────────────
+  # 2. DATABASE (PostgreSQL)
+  # ─────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: harukaizen-db
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: haru_admin
+      POSTGRES_PASSWORD: super_secret_password
+      POSTGRES_DB: harukaizen
+    volumes:
+      - harukaizen-db-data:/var/lib/postgresql/data
+
+  # ─────────────────────────────────────────
+  # 3. CACHE (Redis)
+  # Production Parity: stesso Redis in dev e prod
+  # ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: harukaizen-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - harukaizen-redis-data:/data
+
+volumes:
+  harukaizen-db-data:
+  harukaizen-redis-data:

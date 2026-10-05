@@ -1,0 +1,113 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: harukaizen-postgres-prod
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-harukaizen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-harukaizen_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-harukaizen_db}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U harukaizen -d harukaizen_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: harukaizen-redis-prod
+    restart: always
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_prod_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Container Strategia di Backup Periodico del DB ─────────────────────────
+  db-backup:
+    image: postgres:17-alpine
+    container_name: harukaizen-db-backup-prod
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: ${POSTGRES_USER:-harukaizen}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-harukaizen_secret}
+      PGDATABASE: ${POSTGRES_DB:-harukaizen_db}
+    volumes:
+      - postgres_backups_data:/backups
+    entrypoint: |
+      /bin/sh -c '
+      echo "=== [Backup Daemon] HaruKaizen PostgreSQL Backup Service Avviato ==="
+      while true; do
+        TIMESTAMP=$$(date +%Y%m%d_%H%M%S)
+        BACKUP_FILE="/backups/harukaizen_db_$${TIMESTAMP}.sql.gz"
+        echo "[Backup] Creazione dump database compresso: $${BACKUP_FILE}..."
+        pg_dump -h $$PGHOST -p $$PGPORT -U $$PGUSER -d $$PGDATABASE | gzip > "$$BACKUP_FILE"
+        if [ $$? -eq 0 ]; then
+          echo "[Backup] Dump creato con successo ($$(ls -lh $$BACKUP_FILE | awk \"{print \$$5}\"))"
+          # Conserva gli ultimi 7 backup ed elimina i più vecchi
+          ls -tp /backups/harukaizen_db_*.sql.gz 2>/dev/null | tail -n +8 | xargs -I {} rm -f -- {}
+        else
+          echo "[Backup] ATTENZIONE: Errore durante l esecuzione di pg_dump!"
+        fi
+        echo "[Backup] Prossimo dump programmato tra 6 ore..."
+        sleep 21600
+      done
+      '
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: harukaizen-api-prod
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-harukaizen}:${POSTGRES_PASSWORD:-harukaizen_secret}@postgres:5432/${POSTGRES_DB:-harukaizen_db}?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-changeme_in_production_secret_key_at_least_32_chars}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-changeme_in_production_refresh_secret_at_least_32_chars}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3001}
+    volumes:
+      - uploads_prod_data:/app/uploads/progress
+    ports:
+      - "3000:3000"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: harukaizen-web-prod
+    restart: always
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api/v1}
+    ports:
+      - "3001:3001"
+
+volumes:
+  postgres_prod_data:
+  redis_prod_data:
+  uploads_prod_data:
+  postgres_backups_data:
+

@@ -1,0 +1,100 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# 🌸 HaruKaizen — Git Ignore Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+
+# File di sistema e OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.tmp
+*.bak
+*.swp
+*~
+
+# Variabili d'ambiente e segreti (MAI committare file di configurazione con segreti reali)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+**/.env
+**/.env.local
+**/.env.*.local
+*.env
+*.env.*
+
+# Consenti esplicitamente i file template di esempio
+!.env.example
+!**/.env.example
+
+# Dipendenze
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Compilazione ed Output di Build
+dist/
+**/dist/
+build/
+**/build/
+out/
+**/out/
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Next.js (Web Dashboard)
+.next/
+apps/web/.next/
+apps/web/out/
+
+# Expo & React Native (Mobile App)
+.expo/
+apps/mobile/.expo/
+apps/mobile/android/
+apps/mobile/ios/
+web-build/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Testing, Copertura e Playwright E2E
+coverage/
+**/coverage/
+.nyc_output/
+test-results/
+**/test-results/
+playwright-report/
+**/playwright-report/
+blob-report/
+playwright/.cache/
+
+# Cache, Log e File Temporanei
+*.log
+logs/
+**/logs/
+.cache/
+**/.cache/
+tmp/
+temp/
+.temp/
+
+# Upload Locali e Backup Database
+uploads/
+**/uploads/
+backups/
+**/backups/
+*.sql.gz
+*.dump
+
+# IDE e Editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.sublime-project
+*.sublime-workspace
