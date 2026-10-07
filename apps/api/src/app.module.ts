@@ -14,6 +14,7 @@ import { NutritionModule } from './nutrition/nutrition.module.js';
 import { WorkoutModule } from './workout/workout.module.js';
 import { AiModule } from './ai/ai.module.js';
 import { MediaModule } from './media/media.module.js';
+import { HealthModule } from './common/health/health.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 
 @Module({
@@ -25,6 +26,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
     }),
     PrismaModule,    // Database (globale)
     CryptoModule,    // AES-256-GCM (usato da SettingsModule)
+    HealthModule,    // Health probes (/api/v1/health)
 
     // ── Sprint 1 — Auth & Core ──────────────────────────────────────────
     AuthModule,

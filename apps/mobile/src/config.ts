@@ -31,13 +31,13 @@ function resolveApiBaseUrl(): string {
   if (__DEV__ && hostUri) {
     const ip = hostUri.split(':')[0];
     if (ip) {
-      // In Local-Edition l'API su Docker Compose risponde su porta 8080
-      return `http://${ip}:8080/api/v1`;
+      // In Local-Edition l'API su Docker Compose risponde su porta 8002
+      return `http://${ip}:8002/api/v1`;
     }
   }
 
-  // 3. Fallback standard per emulatore Android su porta 8080
-  return 'http://10.0.2.2:8080/api/v1';
+  // 3. Fallback standard per emulatore Android
+  return 'http://10.0.2.2:8002/api/v1';
 }
 
 export const API_BASE_URL = resolveApiBaseUrl();

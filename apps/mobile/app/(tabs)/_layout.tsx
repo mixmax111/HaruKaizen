@@ -2,9 +2,12 @@ import { Tabs } from 'expo-router';
 import { Text } from 'react-native';
 import { COLORS } from '../../src/config';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const TypedTabs: any = Tabs;
+
 export default function TabsLayout() {
   return (
-    <Tabs
+    <TypedTabs
       screenOptions={{
         headerShown: true,
         headerStyle: {
@@ -25,38 +28,38 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: COLORS.textDim,
       }}
     >
-      <Tabs.Screen
+      <TypedTabs.Screen
         name="index"
         options={{
           title: 'Home',
           headerTitle: 'HaruKaizen',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 18, color }}>🏠</Text>,
+          tabBarIcon: ({ color }: { color: string }) => <Text style={{ fontSize: 18, color }}>🏠</Text>,
         }}
       />
-      <Tabs.Screen
+      <TypedTabs.Screen
         name="workout"
         options={{
           title: 'Gym Tracker',
           headerTitle: 'Modalità Palestra',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 18, color }}>🏋️</Text>,
+          tabBarIcon: ({ color }: { color: string }) => <Text style={{ fontSize: 18, color }}>🏋️</Text>,
         }}
       />
-      <Tabs.Screen
+      <TypedTabs.Screen
         name="nutrition"
         options={{
           title: 'Nutrizione',
           headerTitle: 'Diario & Barcode',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 18, color }}>🥗</Text>,
+          tabBarIcon: ({ color }: { color: string }) => <Text style={{ fontSize: 18, color }}>🥗</Text>,
         }}
       />
-      <Tabs.Screen
+      <TypedTabs.Screen
         name="progress"
         options={{
           title: 'Progressi',
           headerTitle: 'Ghosting Camera',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 18, color }}>📷</Text>,
+          tabBarIcon: ({ color }: { color: string }) => <Text style={{ fontSize: 18, color }}>📷</Text>,
         }}
       />
-    </Tabs>
+    </TypedTabs>
   );
 }

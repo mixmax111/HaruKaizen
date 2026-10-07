@@ -10,6 +10,8 @@
     "dev:api": "npm run start:dev --workspace=api",
     "dev:web": "npm run dev --workspace=web",
     "dev:mobile": "npm start --workspace=mobile",
+    "dev:mobile:clean": "npm run start:clean --workspace=mobile",
+    "dev:mobile:tunnel": "npm start --workspace=mobile -- --tunnel",
     "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
@@ -20,8 +22,16 @@
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
+  "overrides": {
+    "react": "18.3.1",
+    "react-native": "0.76.9",
+    "react-native-screens": "4.4.0",
+    "react-native-safe-area-context": "4.12.0"
+  },
   "devDependencies": {
     "concurrently": "^9.0.0",
+    "expo": "~52.0.0",
+    "expo-router": "~4.0.0",
     "prisma": "^7.0.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.23.15"

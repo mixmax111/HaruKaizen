@@ -7,6 +7,9 @@ import {
   syncPushTokenWithBackend,
 } from '../src/services/notificationService';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const TypedStack: any = Stack;
+
 export default function RootLayout() {
   const router = useRouter();
   const notificationResponseListener = useRef<Notifications.Subscription | null>(null);
@@ -44,10 +47,10 @@ export default function RootLayout() {
   }, [router]);
 
   return (
-    <Stack>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-    </Stack>
+    <TypedStack>
+      <TypedStack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <TypedStack.Screen name="(auth)" options={{ headerShown: false }} />
+    </TypedStack>
   );
 }
 

@@ -22,8 +22,8 @@ export function validateEnv(config: Record<string, unknown>): Env {
   const result = envSchema.safeParse(config);
 
   if (!result.success) {
-    const errors = result.error.errors
-      .map((e) => `  ❌ ${e.path.join('.')}: ${e.message}`)
+    const errors = result.error.issues
+      .map((e: z.ZodIssue) => `  ❌ ${e.path.join('.')}: ${e.message}`)
       .join('\n');
     throw new Error(`\n🔴 Validazione .env fallita:\n${errors}\n`);
   }

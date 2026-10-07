@@ -144,7 +144,7 @@ export default function MobileTelemetryHomeScreen() {
           </View>
           <View style={styles.ribbonBottomRow}>
             <Text style={styles.nodeAddressText}>
-              NODE: 127.0.0.1:8080 • {isConnected ? 'ONLINE' : 'OFFLINE_CACHE'}
+              NODE: {API_BASE_URL.replace(/^https?:\/\//, '').replace(/\/api\/v1$/, '')} • {isConnected ? 'ONLINE' : 'OFFLINE_CACHE'}
             </Text>
             <Text style={styles.latencyText}>12ms</Text>
           </View>

@@ -8,6 +8,7 @@ services:
     restart: unless-stopped
     ports:
       - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-harukaizen}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-harukaizen_local_secret}
@@ -69,12 +70,14 @@ services:
     volumes:
       - uploads_local_data:/app/uploads/progress
     ports:
+      - "8002:8080"
       - "8080:8080"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/v1/health || exit 1"]
-      interval: 10s
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/v1/health || exit 1"]
+      interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 15s
     networks:
       - backend-network
 
@@ -83,6 +86,7 @@ services:
   # Esposto esplicitamente su porta 3000 per accesso locale da browser
   # ─────────────────────────────────────────────────────────────────────────────
   web:
+    image: harukaizen-web-local:latest
     build:
       context: .
       dockerfile: apps/web/Dockerfile
@@ -98,10 +102,11 @@ services:
     ports:
       - "3000:3000"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 || exit 1"]
-      interval: 10s
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000 || exit 1"]
+      interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 15s
     networks:
       - backend-network
 
