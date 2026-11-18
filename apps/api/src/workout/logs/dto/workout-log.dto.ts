@@ -1,0 +1,94 @@
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsInt,
+  Min,
+  IsNumber,
+  IsIn,
+  IsBoolean,
+  IsDateString,
+} from 'class-validator';
+import { SetType } from '@prisma/client';
+
+export class StartWorkoutLogDto {
+  @IsString()
+  @IsNotEmpty()
+  dayNameSnapshot: string; // es. "Giorno A - Petto e Tricipiti"
+
+  @IsOptional()
+  @IsString()
+  planId?: string;
+
+  @IsOptional()
+  @IsDateString()
+  date?: string;
+}
+
+export class AddLogExerciseDto {
+  @IsString()
+  @IsNotEmpty()
+  exerciseNameSnapshot: string;
+
+  @IsOptional()
+  @IsString()
+  exerciseId?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isExtraExercise?: boolean;
+}
+
+export class UpdateLogExerciseNotesDto {
+  @IsString()
+  notes: string;
+}
+
+export class AddLogSetDto {
+  @IsInt()
+  @Min(1)
+  orderIndex: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  setOrder?: number;
+
+  @IsString()
+  @IsIn(['WARMUP', 'WORKING', 'DROPSET', 'DROP', 'FAILURE'])
+  setType: SetType;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  repsCompleted?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  weightKg?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  rpe?: number;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @IsOptional()
+  @IsString()
+  clientSideId?: string;
+}
+
+export class FinishWorkoutLogDto {
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  manualCaloriesBurned?: number;
+}
