@@ -118,26 +118,47 @@ cp apps/mobile/.env.example apps/mobile/.env
 
 ---
 
-## 🗄️ 4. Inizializzazione del Database (Prisma)
+## 🗄️ 4. Inizializzazione e Manutenzione del Database (Prisma)
 
-Con PostgreSQL attivo:
+HaruKaizen gestisce il versionamento dello schema PostgreSQL tramite migrazioni dichiarative di Prisma (`prisma/migrations/`).
+
+### A. Installazione Pulita (Fresh Setup)
+Per una nuova istanza (o primo avvio in assoluto su container o database vuoto):
 
 ```bash
 # 1. Genera i tipi TypeScript del client Prisma
 npm run db:generate
 
-# 2. Applica lo schema strutturale
-npm run db:push
+# 2. Applica le migrazioni strutturali a partire dalla baseline 0_init
+npm run db:migrate:deploy
 
-# 3. Esegui la deduplicazione degli alimenti e crea l'indice parziale anti-race-condition
-npm run db:dedup-foods
+# 3. Popola il database con utente admin, catalogo esercizi e alimenti certificati
+npm run db:seed
+```
+
+### B. Aggiornamento di un'Istanza Esistente (Update / Deploy di Nuove Release)
+In ambiente di produzione o aggiornamento da versioni precedenti:
+
+```bash
+# 1. Backup preventivo obbligatorio del database prima dell'aggiornamento
+pg_dump -U harukaizen -h localhost -d harukaizen_db -Fc -f backup_pre_upgrade.dump
+
+# 2. Aggiorna dipendenze e genera client Prisma aggiornato
+npm install
+npm run db:generate
+
+# 3. Applica le nuove migrazioni in modo transazionale
+npm run db:migrate:deploy
+
+# 4. Verifica lo stato di allineamento delle migrazioni
+npm run db:migrate:status
 ```
 
 ### Seeding Iniziale (`npm run db:seed`)
-Il comando `npm run db:seed` inserisce nel database:
+Il comando `npm run db:seed` inserisce nel database in modo idempotente:
 - L'utente amministratore predefinito: `admin@harukaizen.local` con password `AdminSecurePass2026!`.
-- Un catalogo di 56 esercizi con categoria e valore MET standard.
-- 10 alimenti base con composizione nutrizionale di esempio.
+- Il catalogo di esercizi con categoria e valore MET standard.
+- Alimenti base certificati con composizione nutrizionale di esempio.
 
 > [!CAUTION]
 > **Sicurezza in Produzione**: Se esegui `npm run db:seed` su un server accessibile da terzi, **cambia immediatamente la password dell'amministratore** dal profilo dopo il primo accesso. Non lasciare mai la password di default.
