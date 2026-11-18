@@ -11,3 +11,6 @@ export * from './nutrition/tdee-engine.js';
 export * from './nutrition/calorie-balance.js';
 export * from './nutrition/recipe-calculator.js';
 
+// Motori Gym / Live Workout
+export * from './workout/eligibility.js';
+
