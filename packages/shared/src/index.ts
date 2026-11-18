@@ -14,4 +14,5 @@ export * from './nutrition/recipe-calculator.js';
 // Motori Gym / Live Workout
 export * from './workout/eligibility.js';
 export * from './workout/expenditure.js';
+export * from './workout/timer-machine.js';
 
