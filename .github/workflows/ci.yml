@@ -2,9 +2,9 @@ name: HaruKaizen Monorepo CI/CD
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, 'gym/**']
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, 'gym/**']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -65,6 +65,9 @@ jobs:
 
       - name: 🗄️ Generate Prisma Client
         run: npx prisma generate
+
+      - name: 📦 Build Shared Packages (@harukaizen/shared)
+        run: npm run build --workspace=@harukaizen/shared
 
       - name: 🛡️ Typecheck Mobile App (TypeScript)
         run: npx tsc --noEmit -p apps/mobile/tsconfig.json

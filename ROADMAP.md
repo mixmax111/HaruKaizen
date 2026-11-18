@@ -68,11 +68,13 @@ Questo documento definisce le priorità evolutive di HaruKaizen, derivate dall'a
   - Modal o schermata di composizione ricetta con selezione porzioni e peso cotto.
   - Salvataggio locale in outbox e invio sincrono al backend.
 
-### 2.4 Migrazioni Prisma Formali in CI/CD
-- **Problema**: L'aggiornamento dello schema si basa su `prisma db push`, sconsigliato in ambienti di produzione con dati reali.
-- **Obiettivo**: Generare file di migrazione SQL storici con `prisma migrate dev` e applicarli in deploy con `prisma migrate deploy`.
+### 2.4 CI/CD Minima & Migrazioni Prisma Formali
+- **Problema**: L'aggiornamento dello schema si basa su `prisma db push`, sconsigliato in ambienti di produzione con dati reali, e mancava una validazione continua integrata della libreria shared e delle build.
+- **Obiettivo**: Workflow GitHub Actions (`.github/workflows/ci.yml`) con service container PostgreSQL 17 e Redis 7 su runner Linux, che esegue automaticamente checkout, installazione (`npm ci` con `.npmrc` legacy peer deps), generazione client Prisma, build `@harukaizen/shared`, test suite Vitest (API) su database di servizio reale, e build di produzione (`api` e `web`). Introduzione di migrazioni SQL formali (`prisma migrate deploy`).
 - **Criterio di Fatto (DoD)**:
-  - Cartella `prisma/migrations` contenente la timeline completa di DDL SQL.
+  - File `.github/workflows/ci.yml` attivo su branch `main`, `develop` e `gym/**`.
+  - Service container PostgreSQL e Redis attivi durante i test.
+  - Cartella `prisma/migrations` contenente la baseline DDL SQL (`0_init`) per il deploy senza `db push`.
   - Pipeline GitHub Actions che esegue `prisma migrate deploy` su database pulito di test.
 
 ### 2.5 Test E2E e Collaudo Hardware Mobile in Modalità Aereo
