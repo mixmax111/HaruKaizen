@@ -1,6 +1,7 @@
-﻿import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateWorkoutPlanDto } from './dto/create-workout-plan.dto.js';
+import { mapPublicWorkoutPlan } from './dto/public-workout-plan.dto.js';
 
 @Injectable()
 export class WorkoutPlansService {
@@ -54,7 +55,7 @@ export class WorkoutPlansService {
   }
 
   async findAll(userId: string) {
-    return this.prisma.workoutPlan.findMany({
+    const plans = await this.prisma.workoutPlan.findMany({
       where: {
         deletedAt: null,
         OR: [{ userId }, { isPublic: true }],
@@ -70,6 +71,8 @@ export class WorkoutPlansService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    return plans.map((plan) => (plan.userId !== userId ? mapPublicWorkoutPlan(plan) : plan));
   }
 
   async findOne(userId: string, id: string) {
@@ -92,6 +95,10 @@ export class WorkoutPlansService {
 
     if (plan.userId !== userId && !plan.isPublic) {
       throw new ForbiddenException('Non hai accesso a questa scheda.');
+    }
+
+    if (plan.userId !== userId && plan.isPublic) {
+      return mapPublicWorkoutPlan(plan);
     }
 
     return plan;
