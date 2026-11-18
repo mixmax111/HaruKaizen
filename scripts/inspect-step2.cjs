@@ -1,12 +1,13 @@
 const { Client } = require('pg');
 
+const targetDb = process.argv[2] || 'harukaizen_db';
 const client = new Client({
-  connectionString: 'postgresql://harukaizen:harukaizen_local_secret@localhost:5432/harukaizen_step2_copy?schema=public'
+  connectionString: `postgresql://harukaizen:harukaizen_local_secret@localhost:5432/${targetDb}?schema=public`
 });
 
 async function inspect() {
   await client.connect();
-  console.log('Connected to harukaizen_step2_copy');
+  console.log(`Connected to ${targetDb}`);
 
   // 1. Enum types in DB named SetType
   const enumQuery = await client.query(`
@@ -48,11 +49,20 @@ async function inspect() {
 
   // 4. Check workout_log_sets specifically
   try {
-    const setsDistinct = await client.query('SELECT "setType", count(*) AS count FROM "workout_log_sets" GROUP BY "setType";');
-    console.log('\n--- workout_log_sets.setType distinct values ---');
+    const setsDistinct = await client.query('SELECT "set_type", count(*) AS count FROM "workout_log_sets" GROUP BY "set_type";');
+    console.log('\n--- workout_log_sets.set_type distinct values ---');
     console.log(JSON.stringify(setsDistinct.rows, null, 2));
   } catch (err) {
     console.log('Error querying workout_log_sets:', err.message);
+  }
+
+  // 5. Query _prisma_migrations
+  try {
+    const migs = await client.query('SELECT id, migration_name, finished_at, rolled_back_at FROM "_prisma_migrations";');
+    console.log('\n--- _prisma_migrations ---');
+    console.log(JSON.stringify(migs.rows, null, 2));
+  } catch (err) {
+    console.log('Error querying _prisma_migrations:', err.message);
   }
 
   await client.end();
@@ -62,3 +72,4 @@ inspect().catch(err => {
   console.error(err);
   process.exit(1);
 });
+
