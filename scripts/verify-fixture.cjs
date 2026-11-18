@@ -108,8 +108,59 @@ async function setup() {
   await prisma.$disconnect();
 }
 
-setup().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+async function cleanup(jsonStr) {
+  if (!jsonStr) return;
+  try {
+    const data = JSON.parse(jsonStr);
+    const { userAId, userBId, exerciseId } = data;
+
+    if (userBId) {
+      const logs = await prisma.workoutLog.findMany({ where: { userId: userBId } });
+      for (const log of logs) {
+        const exLogs = await prisma.workoutLogExercise.findMany({ where: { workoutLogId: log.id } });
+        for (const ex of exLogs) {
+          await prisma.workoutLogSet.deleteMany({ where: { workoutLogExerciseId: ex.id } });
+        }
+        await prisma.workoutLogExercise.deleteMany({ where: { workoutLogId: log.id } });
+      }
+      await prisma.workoutLog.deleteMany({ where: { userId: userBId } });
+      await prisma.userSettings.deleteMany({ where: { userId: userBId } });
+      await prisma.user.deleteMany({ where: { id: userBId } });
+    }
+
+    if (userAId) {
+      const plans = await prisma.workoutPlan.findMany({ where: { userId: userAId } });
+      for (const p of plans) {
+        const days = await prisma.workoutDay.findMany({ where: { workoutPlanId: p.id } });
+        for (const d of days) {
+          await prisma.workoutDayExercise.deleteMany({ where: { workoutDayId: d.id } });
+        }
+        await prisma.workoutDay.deleteMany({ where: { workoutPlanId: p.id } });
+      }
+      await prisma.workoutPlan.deleteMany({ where: { userId: userAId } });
+      if (exerciseId) {
+        await prisma.exercise.deleteMany({ where: { id: exerciseId } });
+      }
+      await prisma.userSettings.deleteMany({ where: { userId: userAId } });
+      await prisma.user.deleteMany({ where: { id: userAId } });
+    }
+  } catch (err) {
+    console.error('Fixture cleanup error (non-fatal):', err.message);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+const mode = process.argv[2];
+if (mode === 'cleanup') {
+  cleanup(process.argv[3]).catch(err => {
+    console.error(err);
+    process.exit(1);
+  });
+} else {
+  setup().catch(err => {
+    console.error(err);
+    process.exit(1);
+  });
+}
 

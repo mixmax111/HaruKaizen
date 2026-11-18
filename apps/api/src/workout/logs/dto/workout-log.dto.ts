@@ -10,6 +10,7 @@ import {
   IsBoolean,
   IsDateString,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { SetType } from '@prisma/client';
 
 export class StartWorkoutLogDto {
@@ -61,6 +62,7 @@ export class AddLogSetDto {
   @Max(100)
   setOrder?: number;
 
+  @Transform(({ value }) => (typeof value === 'string' && value.toUpperCase() === 'DROP' ? 'DROPSET' : value))
   @IsString()
   @IsIn(['WARMUP', 'WORKING', 'DROPSET', 'FAILURE'])
   setType: SetType;

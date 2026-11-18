@@ -32,16 +32,24 @@ describe('Workout DTOs Validation Limits (Step 1 Security)', () => {
       }
     });
 
-    it('rejects legacy DROP and invalid setType', async () => {
-      for (const setType of ['DROP', 'SUPERSET_INVALID']) {
-        const dto = plainToInstance(AddLogSetDto, {
-          orderIndex: 1,
-          setType,
-        });
-        const errors = await validate(dto);
-        expect(errors.length).toBeGreaterThan(0);
-        expect(errors[0].property).toBe('setType');
-      }
+    it('accepts legacy DROP by transforming to canonical DROPSET', async () => {
+      const dto = plainToInstance(AddLogSetDto, {
+        orderIndex: 1,
+        setType: 'DROP',
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+      expect(dto.setType).toBe('DROPSET');
+    });
+
+    it('rejects invalid setType', async () => {
+      const dto = plainToInstance(AddLogSetDto, {
+        orderIndex: 1,
+        setType: 'SUPERSET_INVALID',
+      });
+      const errors = await validate(dto);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors[0].property).toBe('setType');
     });
 
     it('rejects repsCompleted > 500 or < 0', async () => {

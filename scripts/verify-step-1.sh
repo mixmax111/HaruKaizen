@@ -11,13 +11,15 @@
 
 set -e
 
+# Porta reale predefinita dell'API: 3000 (prefisso: /api/v1)
+# Sovrascrivibile via variabile d'ambiente: API_URL="http://127.0.0.1:3000/api/v1" bash scripts/verify-step-1.sh
 API_URL="${API_URL:-http://localhost:3000/api/v1}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "================================================================="
 echo " HaruKaizen - Step 1 Verification Script"
-echo " Target API: $API_URL"
+echo " Target API: $API_URL (Porta default: 3000)"
 echo "================================================================="
 
 FAILURES=0
@@ -40,6 +42,9 @@ fi
 # ------------------------------------------------------------------------------
 echo "Inizializzazione fixture utente A, utente B e scheda pubblica..."
 FIXTURE_JSON=$(node "$SCRIPT_DIR/verify-fixture.cjs")
+
+# Trap di pulizia automatica dati su uscita (successo, fallimento o interruzione)
+trap 'echo "Pulizia automatica fixture di test..."; node "$SCRIPT_DIR/verify-fixture.cjs" cleanup "$FIXTURE_JSON" > /dev/null 2>&1 || true' EXIT
 
 TOKEN_A=$(node -e "console.log(JSON.parse(process.argv[1]).tokenA)" "$FIXTURE_JSON")
 TOKEN_B=$(node -e "console.log(JSON.parse(process.argv[1]).tokenB)" "$FIXTURE_JSON")

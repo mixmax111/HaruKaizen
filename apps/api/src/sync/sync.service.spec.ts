@@ -293,6 +293,43 @@ describe('SyncService', () => {
       });
     });
 
+    it('maps legacy DROP setType to DROPSET on offline sync with logger warning', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({ birthDate: new Date('1990-01-01') });
+      mockPrisma.workoutLog.create.mockResolvedValueOnce({ id: 'srv-log-drop' });
+      mockPrisma.workoutLogExercise.create.mockResolvedValueOnce({ id: 'srv-ex-1' });
+      mockPrisma.workoutLogSet.create.mockResolvedValueOnce({ id: 'srv-set-1' });
+
+      const mutation: OfflineMutationDto = {
+        id: 'client-workout-drop',
+        type: MutationType.CREATE_WORKOUT_LOG,
+        timestamp: '2026-10-21T10:00:00Z',
+        payload: {
+          workoutName: 'Drop Set Workout',
+          exercises: [
+            {
+              exerciseName: 'Biceps Curl',
+              sets: [
+                {
+                  orderIndex: 1,
+                  setType: 'DROP',
+                  repsCompleted: 12,
+                  weightKg: 20,
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      const res = await service.processBatchSync('user-1', [mutation]);
+      expect(res.results[0].status).toBe('SYNCED');
+      expect(mockPrisma.workoutLogSet.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          setType: 'DROPSET',
+        }),
+      });
+    });
+
     it('blocks automatic calorie estimation on offline sync when user age or weight is unknown', async () => {
       mockPrisma.workoutLog.findUnique.mockResolvedValueOnce(null);
       // No measurements

@@ -137,11 +137,38 @@ npm run db:seed
 ```
 
 ### B. Aggiornamento di un'Istanza Esistente (Update / Deploy di Nuove Release)
-In ambiente di produzione o aggiornamento da versioni precedenti:
+
+#### 1. Transizione da ambiente legacy creato con `db push` (Adozione della Baseline `0_init`)
+Se l'istanza di database è stata originariamente inizializzata tramite `prisma db push` o script manuali, l'esecuzione diretta di `prisma migrate dev` o `prisma migrate deploy` fallirà con l'errore:
+> `P3005: The database schema is not empty. Read more about how to baseline an existing production database: https://pris.ly/d/migrate-baseline`
+
+Questo avviene perché Prisma Migrate richiede un registro storico coerente nella tabella `_prisma_migrations` e rileva tabelle già presenti senza traccia di migrazioni applicate. La procedura di baselining certificata risolve questo stato:
 
 ```bash
-# 1. Backup preventivo obbligatorio del database prima dell'aggiornamento
-pg_dump -U harukaizen -h localhost -d harukaizen_db -Fc -f backup_pre_upgrade.dump
+# 1. Backup preventivo obbligatorio del database
+pg_dump -U harukaizen -h localhost -d harukaizen_db -Fc -f backup_pre_baseline.dump
+
+# 2. Se l'istanza include l'enum SetType non canonico ('DROP'), applicare lo script SQL dedicato:
+psql -U harukaizen -h localhost -d harukaizen_db -f scripts/migrate-settype.sql
+
+# 3. Pulizia di eventuali vecchie registrazioni non canoniche in _prisma_migrations:
+#    (Necessario solo se la tabella _prisma_migrations contiene record storici disallineati)
+psql -U harukaizen -h localhost -d harukaizen_db -c "DELETE FROM \"_prisma_migrations\" WHERE \"migration_name\" <> '0_init';"
+
+# 4. Registra la baseline 0_init come già applicata (operazione da eseguire una sola volta):
+npx prisma migrate resolve --applied 0_init
+
+# 5. Verifica lo stato di perfetto allineamento:
+npm run db:migrate:status
+# Risultato atteso: "Database schema is up to date!"
+```
+
+#### 2. Deploy ordinario di aggiornamenti successivi
+Una volta adottata la baseline, gli aggiornamenti di release seguono il flusso standard transazionale:
+
+```bash
+# 1. Backup preventivo
+pg_dump -U harukaizen -h localhost -d harukaizen_db -Fc -f backup_release.dump
 
 # 2. Aggiorna dipendenze e genera client Prisma aggiornato
 npm install

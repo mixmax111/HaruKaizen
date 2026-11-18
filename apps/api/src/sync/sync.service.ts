@@ -464,7 +464,7 @@ export class SyncService {
           return val;
         };
 
-        const ALLOWED_SET_TYPES = ['WARMUP', 'WORKING', 'DROP', 'DROPSET', 'FAILURE'];
+        const ALLOWED_SET_TYPES = ['WARMUP', 'WORKING', 'DROPSET', 'FAILURE'];
         const exercises = Array.isArray(p.exercises) ? p.exercises : [];
         const processedExercises: Array<{
           exName: string;
@@ -497,7 +497,10 @@ export class SyncService {
             const s = rawSets[sIdx];
 
             let setType = s.setType ? String(s.setType).toUpperCase() : 'WORKING';
-            if (!ALLOWED_SET_TYPES.includes(setType)) {
+            if (setType === 'DROP') {
+              this.logger.warn(`Offline sync mapped legacy setType "DROP" to DROPSET for user ${userId}`);
+              setType = 'DROPSET';
+            } else if (!ALLOWED_SET_TYPES.includes(setType)) {
               this.logger.warn(`Offline sync mapped invalid setType "${s.setType}" to WORKING for user ${userId}`);
               setType = 'WORKING';
             }
