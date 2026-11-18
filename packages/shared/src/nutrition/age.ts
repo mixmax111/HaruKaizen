@@ -9,9 +9,13 @@ export function calculateAge(birthDate: Date | string, referenceDate: Date = new
     throw new Error('Data di nascita non valida');
   }
 
-  let age = referenceDate.getFullYear() - birth.getFullYear();
-  const monthDiff = referenceDate.getMonth() - birth.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && referenceDate.getDate() < birth.getDate())) {
+  const ref = referenceDate && !isNaN(new Date(referenceDate).getTime())
+    ? new Date(referenceDate)
+    : new Date();
+
+  let age = ref.getFullYear() - birth.getFullYear();
+  const monthDiff = ref.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && ref.getDate() < birth.getDate())) {
     age--;
   }
 

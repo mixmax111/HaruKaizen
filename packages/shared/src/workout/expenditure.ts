@@ -104,13 +104,14 @@ export function calculateWorkoutExpenditure(
               ? 60
               : 90;
 
+          const clampedRest = rawRest === 0 ? 0 : Math.min(180, Math.max(30, rawRest));
           normalizedSets.push({
             setType: s.setType || 'WORKING',
             reps: typeof s.repsCompleted === 'number' && s.repsCompleted > 0 ? s.repsCompleted : 10,
             durationSeconds: typeof s.durationSeconds === 'number' && s.durationSeconds > 0 ? s.durationSeconds : 0,
             weightKg: typeof s.weightKg === 'number' && !isNaN(s.weightKg) ? Math.max(0, s.weightKg) : 0,
             rpe: typeof s.rpe === 'number' && !isNaN(s.rpe) ? s.rpe : 8,
-            restSeconds: Math.min(300, Math.max(0, rawRest)),
+            restSeconds: clampedRest,
             isTimeBased: isTime,
             metBase: base,
             isWarmup,
@@ -135,13 +136,14 @@ export function calculateWorkoutExpenditure(
           ? 60
           : 90;
 
+      const clampedRest = rawRest === 0 ? 0 : Math.min(180, Math.max(30, rawRest));
       normalizedSets.push({
         setType: s.setType || 'WORKING',
         reps: typeof s.repsCompleted === 'number' && s.repsCompleted > 0 ? s.repsCompleted : 10,
         durationSeconds: typeof s.durationSeconds === 'number' && s.durationSeconds > 0 ? s.durationSeconds : 0,
         weightKg: typeof s.weightKg === 'number' && !isNaN(s.weightKg) ? Math.max(0, s.weightKg) : 0,
         rpe: typeof s.rpe === 'number' && !isNaN(s.rpe) ? s.rpe : 8,
-        restSeconds: Math.min(300, Math.max(0, rawRest)),
+        restSeconds: clampedRest,
         isTimeBased: isTime,
         metBase: base,
         isWarmup,

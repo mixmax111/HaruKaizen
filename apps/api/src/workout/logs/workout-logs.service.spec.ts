@@ -81,9 +81,11 @@ describe('WorkoutLogsService', () => {
     expect(result.summary.totalWorkingVolumeKg).toBe(1800);
     // Capping anti-inattività: 60 minuti di wall-clock con solo 3 serie vengono cappati alla durata effettiva (~6-8 min)
     expect(result.summary.durationMinutes).toBeLessThan(15);
-    // Calorie biomeccaniche per 3 serie (1 warmup + 2 working a 100kg con 80kg bw) ~ 30-40 kcal
-    expect(result.summary.caloriesBurned).toBeGreaterThanOrEqual(25);
+    // Calorie biomeccaniche per 3 serie (1 warmup + 2 working a 100kg con 80kg bw)
+    // Dispendio netto: ~16 kcal. Dispendio lordo: ~30-40 kcal.
+    expect(result.summary.caloriesBurned).toBeGreaterThanOrEqual(15);
     expect(result.summary.caloriesBurned).toBeLessThanOrEqual(45);
+    expect((result.summary as any).grossCaloriesBurned).toBeGreaterThanOrEqual(25);
   });
 
   it('underage user workout expenditure blocks adult MET calculation and requires manual calories', async () => {

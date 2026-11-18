@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { MutationType, OfflineMutationDto } from './dto/batch-sync.dto.js';
-import { DocumentCategory, calculateAge } from '@harukaizen/shared';
+import { DocumentCategory, calculateAge, getCalorieEstimateEligibility, isEligibleForCalorieEstimate } from '@harukaizen/shared';
 import {
   calculateWorkoutExpenditure,
   BiomechanicalSetInput,
@@ -560,20 +560,12 @@ export class SyncService {
           select: { birthDate: true },
         });
 
-        let isAgeKnown = false;
-        let isUnderage = false;
-        if (user?.birthDate) {
-          try {
-            const age = calculateAge(user.birthDate, startedAt);
-            isAgeKnown = true;
-            isUnderage = age < 18;
-          } catch {
-            isAgeKnown = false;
-          }
-        }
-
-        const isWeightKnown = userWeightKg !== null && userWeightKg > 0;
-        const isEligibleForAutoCalories = isAgeKnown && !isUnderage && isWeightKnown;
+        const eligibility = getCalorieEstimateEligibility({
+          birthDate: user?.birthDate,
+          weightKg: userWeightKg,
+          referenceDate: startedAt,
+        });
+        const isEligibleForAutoCalories = isEligibleForCalorieEstimate(eligibility);
 
         const rawManualCalories = p.manualCaloriesBurned !== undefined && p.manualCaloriesBurned !== null
           ? Number(p.manualCaloriesBurned)
@@ -583,12 +575,20 @@ export class SyncService {
           : null;
 
         let finalCalories: number | null = null;
+        let finalGrossCalories: number | null = null;
+        let calorieModelVersion = 1;
+
         if (clampedManualCalories !== null) {
           finalCalories = clampedManualCalories;
+          finalGrossCalories = null;
+          calorieModelVersion = 2;
         } else if (isEligibleForAutoCalories) {
           finalCalories = p.caloriesBurned ? Number(p.caloriesBurned) : expenditure.caloriesBurned;
+          finalGrossCalories = expenditure.grossCaloriesBurned;
+          calorieModelVersion = 2;
         } else {
           finalCalories = null;
+          finalGrossCalories = null;
         }
 
         const created = await this.prisma.$transaction(async (tx) => {
@@ -601,6 +601,8 @@ export class SyncService {
               finishedAt,
               durationMinutes: finalDurationMinutes,
               caloriesBurned: finalCalories,
+              grossCaloriesBurned: finalGrossCalories,
+              calorieModelVersion,
               manualCaloriesBurned: clampedManualCalories ?? undefined,
             },
           });

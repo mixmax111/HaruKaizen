@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { StartWorkoutLogDto, AddLogExerciseDto, AddLogSetDto, FinishWorkoutLogDto } from './dto/workout-log.dto.js';
-import { SetType, calculateAge } from '@harukaizen/shared';
+import { SetType, calculateAge, getCalorieEstimateEligibility, isEligibleForCalorieEstimate } from '@harukaizen/shared';
 import { calculateWorkoutExpenditure, BiomechanicalSetInput } from '../expenditure/biomechanical-expenditure.js';
 
 @Injectable()
@@ -192,20 +192,18 @@ export class WorkoutLogsService {
       select: { birthDate: true },
     });
 
-    let isAgeKnown = false;
-    let isUnderage = false;
-    if (user?.birthDate) {
-      try {
-        const age = calculateAge(user.birthDate, log.date);
-        isAgeKnown = true;
-        isUnderage = age < 18;
-      } catch {
-        isAgeKnown = false;
-      }
-    }
+    const workoutRefDate = log.date
+      ? new Date(log.date)
+      : log.startedAt
+      ? new Date(log.startedAt)
+      : new Date();
 
-    const isWeightKnown = weightKg !== null && weightKg > 0;
-    const isEligibleForAutoCalories = isAgeKnown && !isUnderage && isWeightKnown;
+    const eligibility = getCalorieEstimateEligibility({
+      birthDate: user?.birthDate,
+      weightKg,
+      referenceDate: workoutRefDate,
+    });
+    const isEligibleForAutoCalories = isEligibleForCalorieEstimate(eligibility);
 
     // Raccoglie i set completati per il calcolo biomeccanico del dispendio calorico
     const setsInput: BiomechanicalSetInput[] = [];
@@ -233,12 +231,20 @@ export class WorkoutLogsService {
     // Blocco stima automatica: se età sconosciuta, minorenne (<18) o peso sconosciuto => null.
     // manualCaloriesBurned ha sempre precedenza assoluta se fornito.
     let finalCaloriesBurned: number | null = null;
+    let finalGrossCaloriesBurned: number | null = null;
+    let calorieModelVersion = 1;
+
     if (manualCalories !== undefined && manualCalories !== null) {
       finalCaloriesBurned = manualCalories;
+      finalGrossCaloriesBurned = null;
+      calorieModelVersion = 2;
     } else if (isEligibleForAutoCalories) {
-      finalCaloriesBurned = expenditure.caloriesBurned;
+      finalCaloriesBurned = expenditure.caloriesBurned; // Net calories
+      finalGrossCaloriesBurned = expenditure.grossCaloriesBurned; // Gross calories
+      calorieModelVersion = 2;
     } else {
       finalCaloriesBurned = null;
+      finalGrossCaloriesBurned = null;
     }
 
     // Se la misurazione utilizzata ha recordedAt più vecchio di 90 giorni rispetto alla sessione:
@@ -258,6 +264,8 @@ export class WorkoutLogsService {
         finishedAt,
         durationMinutes: expenditure.finalDurationMinutes,
         caloriesBurned: finalCaloriesBurned,
+        grossCaloriesBurned: finalGrossCaloriesBurned,
+        calorieModelVersion,
         manualCaloriesBurned: manualCalories ?? undefined,
       },
       include: {
@@ -273,6 +281,7 @@ export class WorkoutLogsService {
         durationMinutes: expenditure.finalDurationMinutes,
         effectiveDurationMinutes: expenditure.effectiveDurationMinutes,
         caloriesBurned: finalCaloriesBurned,
+        grossCaloriesBurned: finalGrossCaloriesBurned,
         manualCaloriesBurned: manualCalories ?? null,
         totalWorkingVolumeKg: expenditure.totalWorkingVolumeKg,
         weightWarning,

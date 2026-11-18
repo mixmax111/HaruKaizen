@@ -23,15 +23,20 @@ export interface CalorieEstimateEligibilityInput {
 export function getCalorieEstimateEligibility(
   input: CalorieEstimateEligibilityInput,
 ): CalorieEstimateEligibility {
-  const { birthDate, weightKg, referenceDate = new Date() } = input;
+  const { birthDate, weightKg, referenceDate } = input;
 
   if (!birthDate) {
     return 'AGE_UNKNOWN';
   }
 
+  const safeRefDate =
+    referenceDate && !isNaN(new Date(referenceDate).getTime())
+      ? new Date(referenceDate)
+      : new Date();
+
   let age: number;
   try {
-    age = calculateAge(birthDate, referenceDate);
+    age = calculateAge(birthDate, safeRefDate);
   } catch {
     return 'AGE_UNKNOWN';
   }

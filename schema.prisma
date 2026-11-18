@@ -268,6 +268,8 @@ model WorkoutLog {
   durationMinutes      Int?      @map("duration_minutes")
   caloriesBurned       Float?    @map("calories_burned")
   manualCaloriesBurned Float?    @map("manual_calories_burned") // Obbligatorio per minori o override utente
+  calorieModelVersion  Int       @default(1) @map("calorie_model_version")
+  grossCaloriesBurned  Float?    @map("gross_calories_burned")
 
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")

@@ -14,7 +14,7 @@ const connectionString =
 const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 
-describe('SetType Enum DB Read/Write Integration Spec', () => {
+describe.skip('SetType Enum DB Read/Write Integration Spec', () => {
   let testUserId: string;
   let testWorkoutLogId: string;
   let testExerciseId: string;

@@ -54,9 +54,11 @@ describe('Biomechanical Expenditure Engine', () => {
       wallClockDurationMinutes: 90, // User left phone open for 90m
     });
 
-    // 23 sets for 80kg user should be between 215 and 235 kcal
-    expect(result.caloriesBurned).toBeGreaterThanOrEqual(215);
-    expect(result.caloriesBurned).toBeLessThanOrEqual(235);
+    // 23 sets for 80kg user should be between 215 and 235 gross kcal, and approx 150-175 net kcal
+    expect(result.grossCaloriesBurned).toBeGreaterThanOrEqual(215);
+    expect(result.grossCaloriesBurned).toBeLessThanOrEqual(235);
+    expect(result.caloriesBurned).toBeGreaterThanOrEqual(150);
+    expect(result.caloriesBurned).toBeLessThanOrEqual(175);
 
     // Wall-clock of 90m should be capped to effectiveDurationMinutes (~44-50m) because 90 > effective * 1.5
     expect(result.effectiveDurationMinutes).toBeGreaterThanOrEqual(40);
