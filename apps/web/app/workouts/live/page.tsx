@@ -4,7 +4,13 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppLayout } from '../../../components/layout/app-layout';
 import { apiClient } from '../../../lib/api';
-import { calculateLiveExpenditure, LiveSetItem } from '../../../lib/expenditure';
+import { useAuth } from '../../../lib/auth-context';
+import {
+  calculateWorkoutExpenditure,
+  getCalorieEstimateEligibility,
+  isEligibleForCalorieEstimate,
+  BiomechanicalSetInput,
+} from '@harukaizen/shared';
 import {
   Dumbbell,
   Play,
@@ -91,10 +97,14 @@ export default function LiveGymLoggerPage() {
   const [catalogSearch, setCatalogSearch] = useState('');
   const [catalogCategory, setCatalogCategory] = useState<string>('ALL');
 
+  // Auth & Profile state
+  const { user } = useAuth();
+  const [userWeightKg, setUserWeightKg] = useState<number | null>(null);
+
   // Session Finish Modal
   const [finishSummary, setFinishSummary] = useState<{
     durationMinutes: number;
-    caloriesBurned: number;
+    caloriesBurned: number | null;
     totalWorkingVolumeKg: number;
     totalSets: number;
   } | null>(null);
@@ -106,12 +116,23 @@ export default function LiveGymLoggerPage() {
     async function init() {
       try {
         setIsLoading(true);
-        const [plansRes, logsRes] = await Promise.all([
+        const [plansRes, logsRes, measRes] = await Promise.all([
           apiClient.get('/workout/plans').catch(() => ({ data: { data: [] } })),
           apiClient.get('/workout/logs').catch(() => ({ data: { data: [] } })),
+          apiClient.get('/measurements').catch(() => ({ data: { data: [] } })),
         ]);
 
         if (!mounted) return;
+
+        const measurements = measRes.data.data || measRes.data || [];
+        if (Array.isArray(measurements) && measurements.length > 0) {
+          const sorted = [...measurements].sort(
+            (a: any, b: any) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime(),
+          );
+          if (sorted[0]?.weightKg) {
+            setUserWeightKg(Number(sorted[0].weightKg));
+          }
+        }
 
         const availablePlans = plansRes.data.data || plansRes.data || [];
         setPlans(availablePlans);
@@ -502,7 +523,7 @@ export default function LiveGymLoggerPage() {
 
       setFinishSummary({
         durationMinutes: finishData.summary?.durationMinutes || Math.max(1, Math.round(elapsedSeconds / 60)),
-        caloriesBurned: finishData.summary?.caloriesBurned || 350,
+        caloriesBurned: finishData.summary?.caloriesBurned ?? null,
         totalWorkingVolumeKg: finishData.summary?.totalWorkingVolumeKg || calculateCurrentVolume(),
         totalSets: totalCompletedSets,
       });
@@ -532,8 +553,8 @@ export default function LiveGymLoggerPage() {
 
   // Stima fisiologica biomeccanica calorie bruciate in tempo reale
   const liveExpenditure = useMemo(() => {
-    if (!session) return { caloriesBurned: 0, effectiveDurationMinutes: 0, totalVolumeKg: 0 };
-    const savedSets: LiveSetItem[] = [];
+    if (!session) return { caloriesBurned: null, effectiveDurationMinutes: 0, totalVolumeKg: 0 };
+    const savedSets: BiomechanicalSetInput[] = [];
     session.exercises.forEach((ex) => {
       ex.sets.forEach((s) => {
         if (s.isSaved) {
@@ -548,8 +569,26 @@ export default function LiveGymLoggerPage() {
         }
       });
     });
-    return calculateLiveExpenditure(savedSets, 75);
-  }, [session]);
+
+    const eligibility = getCalorieEstimateEligibility({
+      birthDate: user?.birthDate,
+      weightKg: userWeightKg,
+      referenceDate: session.startedAt ? new Date(session.startedAt) : new Date(),
+    });
+
+    const isEligible = isEligibleForCalorieEstimate(eligibility);
+
+    const result = calculateWorkoutExpenditure({
+      sets: savedSets,
+      userWeightKg: isEligible && userWeightKg ? userWeightKg : 75,
+    });
+
+    return {
+      caloriesBurned: isEligible ? result.caloriesBurned : null,
+      effectiveDurationMinutes: result.effectiveDurationMinutes,
+      totalVolumeKg: result.totalWorkingVolumeKg,
+    };
+  }, [session, user, userWeightKg]);
 
   // Formatta Secondi in MM:SS o HH:MM:SS
   const formatTime = (totalSec: number) => {
@@ -734,7 +773,9 @@ export default function LiveGymLoggerPage() {
                     Calorie Stimate
                   </span>
                   <span className="text-lg font-bold text-secondary font-label-data-sm">
-                    ~{finishSummary.caloriesBurned} kcal
+                    {finishSummary.caloriesBurned !== null
+                      ? `~${finishSummary.caloriesBurned} kcal`
+                      : '— kcal'}
                   </span>
                 </div>
 
@@ -785,7 +826,11 @@ export default function LiveGymLoggerPage() {
                   <span>•</span>
                   <span>Volume: <strong className="text-primary">{calculateCurrentVolume().toLocaleString()} kg</strong></span>
                   <span>•</span>
-                  <span>Calorie Stimate: <strong className="text-secondary font-bold">~{liveExpenditure.caloriesBurned} kcal</strong></span>
+                  <span>Calorie Stimate: <strong className="text-secondary font-bold">
+                    {liveExpenditure.caloriesBurned !== null
+                      ? `~${liveExpenditure.caloriesBurned} kcal`
+                      : '— kcal'}
+                  </strong></span>
                 </div>
               </div>
 

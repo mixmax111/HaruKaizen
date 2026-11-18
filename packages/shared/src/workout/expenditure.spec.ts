@@ -15,6 +15,7 @@ describe('Unified Biomechanical Expenditure Engine (packages/shared)', () => {
     expect(res).toEqual({
       grossKcal: 0,
       netKcal: 0,
+      caloriesBurned: 0,
       effectiveDurationMinutes: 0,
       finalDurationMinutes: 0,
       averageMet: 0,

@@ -23,6 +23,12 @@ import { LocalWorkoutExercise, LocalWorkoutSet } from '../../src/types/sync';
 import { useRestTimer } from '../../src/hooks/useRestTimer';
 import { CollapsibleExerciseCard } from '../../src/components/CollapsibleExerciseCard';
 import { RestTimerBanner } from '../../src/components/workout/RestTimerBanner';
+import {
+  calculateWorkoutExpenditure,
+  getCalorieEstimateEligibility,
+  isEligibleForCalorieEstimate,
+  BiomechanicalSetInput,
+} from '@harukaizen/shared';
 
 const DEFAULT_FREE_EXERCISES: LocalWorkoutExercise[] = [
   {
@@ -75,6 +81,10 @@ export default function WorkoutScreen() {
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [sessionStartTime] = useState<number>(Date.now());
 
+  // Profilo utente per idoneità stima calorie
+  const [userBirthDate, setUserBirthDate] = useState<string | null>(null);
+  const [userWeightKg, setUserWeightKg] = useState<number | null>(null);
+
   // Stato Sessione Attiva
   const [workoutTitle, setWorkoutTitle] = useState('Sessione Palestra - Spinta / Push');
   const [notes, setNotes] = useState('');
@@ -84,14 +94,34 @@ export default function WorkoutScreen() {
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [newExName, setNewExName] = useState('');
 
-  // Fetch piani attivi da backend tramite client API centralizzato
+  // Fetch piani attivi e profilo utente da backend tramite client API centralizzato
   useEffect(() => {
     async function loadWorkoutPlans() {
       try {
-        const res = await apiClient.get('/workout/plans');
-        const list = res.data?.data || res.data;
+        const [plansRes, userRes, measRes] = await Promise.all([
+          apiClient.get('/workout/plans').catch(() => ({ data: { data: [] } })),
+          apiClient.get('/users/me').catch(() => ({ data: null })),
+          apiClient.get('/measurements').catch(() => ({ data: { data: [] } })),
+        ]);
+
+        const list = plansRes.data?.data || plansRes.data;
         if (Array.isArray(list) && list.length > 0) {
           setPlans(list);
+        }
+
+        const user = userRes.data?.data || userRes.data;
+        if (user?.birthDate) {
+          setUserBirthDate(user.birthDate);
+        }
+
+        const measurements = measRes.data?.data || measRes.data;
+        if (Array.isArray(measurements) && measurements.length > 0) {
+          const sorted = [...measurements].sort(
+            (a: any, b: any) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime(),
+          );
+          if (sorted[0]?.weightKg) {
+            setUserWeightKg(Number(sorted[0].weightKg));
+          }
         }
       } catch {
         // Fallback silenzioso su sessione libera
@@ -266,46 +296,43 @@ export default function WorkoutScreen() {
 
   // Calcolo volume e calorie stimate fisiologiche
   const { totalVolumeKg, completedSetsCount, estimatedCalories } = React.useMemo(() => {
-    let vol = 0;
     let setsCount = 0;
-    let totalKcal = 0;
-    const userWeightKg = 75;
+    const setsInput: BiomechanicalSetInput[] = [];
 
     exercises.forEach((ex) => {
-      const isWarmupEx = /(warm-?up|riscaldamento|stretching|mobilit[aà]|elastici)/i.test(ex.exerciseName);
       ex.sets.forEach((s) => {
         if (s.completed) {
           setsCount++;
-          const isWarmup = s.setType === 'WARMUP' || isWarmupEx;
-          const reps = s.repsCompleted > 0 ? s.repsCompleted : 10;
-          const tut = Math.min(75, Math.max(15, reps * 3.5));
-
-          let activeMet: number;
-          if (isWarmup) {
-            activeMet = 3.0;
-          } else {
-            const rpeBonus = Math.max(0, ((s.rpe ?? 8) - 7) * 0.4);
-            const loadBonus = Math.min(2.0, ((s.weightKg ?? 0) / userWeightKg) * 1.5);
-            activeMet = 5.5 + rpeBonus + loadBonus;
-            vol += reps * (s.weightKg || 0);
-          }
-
-          const restSec = isWarmup ? 60 : 90;
-          const restMet = isWarmup ? 1.3 : 1.8;
-
-          const activeKcal = (tut / 60) * ((activeMet * 3.5 * userWeightKg) / 200);
-          const restKcal = (restSec / 60) * ((restMet * 3.5 * userWeightKg) / 200);
-          totalKcal += activeKcal + restKcal;
+          setsInput.push({
+            setType: s.setType,
+            repsCompleted: s.repsCompleted,
+            weightKg: s.weightKg,
+            rpe: s.rpe,
+            exerciseName: ex.exerciseName,
+          });
         }
       });
     });
 
+    const eligibility = getCalorieEstimateEligibility({
+      birthDate: userBirthDate,
+      weightKg: userWeightKg,
+      referenceDate: new Date(sessionStartTime),
+    });
+
+    const isEligible = isEligibleForCalorieEstimate(eligibility);
+
+    const result = calculateWorkoutExpenditure({
+      sets: setsInput,
+      userWeightKg: isEligible && userWeightKg ? userWeightKg : 75,
+    });
+
     return {
-      totalVolumeKg: Math.round(vol),
+      totalVolumeKg: result.totalWorkingVolumeKg,
       completedSetsCount: setsCount,
-      estimatedCalories: Math.round(totalKcal),
+      estimatedCalories: isEligible ? result.caloriesBurned : null,
     };
-  }, [exercises]);
+  }, [exercises, userBirthDate, userWeightKg, sessionStartTime]);
 
   // Fine Allenamento: salvataggio offline idempotente
   const handleFinishWorkout = async () => {
@@ -338,7 +365,7 @@ export default function WorkoutScreen() {
       clientCapturedAt,
       notes,
       durationMinutes,
-      caloriesBurned: estimatedCalories,
+      caloriesBurned: estimatedCalories ?? undefined,
       exercises: completedSetsOnly,
     };
 
@@ -403,7 +430,9 @@ export default function WorkoutScreen() {
               </View>
               <View style={styles.statBox}>
                 <Text style={styles.statLabel}>CALORIE (ACSM)</Text>
-                <Text style={[styles.statValue, { color: COLORS.secondary }]}>~{estimatedCalories} kcal</Text>
+                <Text style={[styles.statValue, { color: COLORS.secondary }]}>
+                  {estimatedCalories !== null ? `~${estimatedCalories} kcal` : '— kcal'}
+                </Text>
               </View>
             </View>
 

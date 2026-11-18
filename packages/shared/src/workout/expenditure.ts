@@ -48,11 +48,14 @@ export interface WorkoutExpenditureInput {
 export interface WorkoutExpenditureResult {
   grossKcal: number;
   netKcal: number;
+  caloriesBurned: number;
   effectiveDurationMinutes: number;
   finalDurationMinutes: number;
   averageMet: number;
   totalWorkingVolumeKg: number;
 }
+
+export type BiomechanicalSetInput = WorkoutFlatSetInput;
 
 export function isWarmupExercise(name?: string | null): boolean {
   if (!name) return false;
@@ -159,6 +162,7 @@ export function calculateWorkoutExpenditure(
     return {
       grossKcal: 0,
       netKcal: 0,
+      caloriesBurned: 0,
       effectiveDurationMinutes: 0,
       finalDurationMinutes: rawWallClock,
       averageMet: 0,
@@ -244,6 +248,7 @@ export function calculateWorkoutExpenditure(
   return {
     grossKcal,
     netKcal,
+    caloriesBurned: netKcal,
     effectiveDurationMinutes,
     finalDurationMinutes,
     averageMet,
