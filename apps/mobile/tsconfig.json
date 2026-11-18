@@ -3,12 +3,12 @@
   "compilerOptions": {
     "strict": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": [
         "./*"
       ]
-    }
+    },
+    "moduleResolution": "bundler"
   },
   "include": [
     "**/*.ts",
