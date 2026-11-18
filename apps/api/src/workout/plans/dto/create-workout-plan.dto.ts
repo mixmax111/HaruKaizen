@@ -1,4 +1,4 @@
-﻿import {
+import {
   IsString,
   IsNotEmpty,
   IsOptional,
@@ -7,6 +7,7 @@
   ValidateNested,
   IsInt,
   Min,
+  Max,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -17,10 +18,12 @@ export class CreateWorkoutDayExerciseDto {
 
   @IsInt()
   @Min(0)
+  @Max(100)
   orderIndex: number;
 
   @IsInt()
   @Min(1)
+  @Max(50)
   sets: number;
 
   @IsString()
@@ -33,6 +36,7 @@ export class CreateWorkoutDayExerciseDto {
 
   @IsInt()
   @Min(0)
+  @Max(600)
   restSeconds: number;
 
   @IsOptional()

@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsInt,
   Min,
+  Max,
   IsNumber,
   IsIn,
   IsBoolean,
@@ -51,30 +52,35 @@ export class UpdateLogExerciseNotesDto {
 export class AddLogSetDto {
   @IsInt()
   @Min(1)
+  @Max(100)
   orderIndex: number;
 
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(100)
   setOrder?: number;
 
   @IsString()
-  @IsIn(['WARMUP', 'WORKING', 'DROPSET', 'DROP', 'FAILURE'])
+  @IsIn(['WARMUP', 'WORKING', 'DROP', 'DROPSET', 'FAILURE'])
   setType: SetType;
 
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(500)
   repsCompleted?: number;
 
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Max(1000)
   weightKg?: number;
 
   @IsOptional()
   @IsNumber()
   @Min(1)
+  @Max(10)
   rpe?: number;
 
   @IsOptional()
@@ -90,5 +96,6 @@ export class FinishWorkoutLogDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Max(10000)
   manualCaloriesBurned?: number;
 }

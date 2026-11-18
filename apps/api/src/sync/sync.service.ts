@@ -412,8 +412,9 @@ export class SyncService {
         const startedAt = p.startedAt || p.date ? new Date(p.startedAt || p.date) : new Date(mutation.timestamp);
         const finishedAt = p.finishedAt ? new Date(p.finishedAt) : new Date(startedAt.getTime() + 60 * 60 * 1000);
 
-        // Biomechanical calculation for offline workouts
-        const latestMeasurement = await this.prisma.measurement.findFirst({
+        // Risoluzione a cascata del peso corporeo (offline sync):
+        // 1. Ultima misurazione storica con recordedAt <= startedAt
+        let measurement = await this.prisma.measurement.findFirst({
           where: {
             userId,
             deletedAt: null,
@@ -421,53 +422,161 @@ export class SyncService {
           },
           orderBy: { recordedAt: 'desc' },
         });
-        const userWeightKg = latestMeasurement?.weightKg ?? 75;
+
+        // 2. Se assente, peso attuale dal profilo utente (ultima misurazione in assoluto)
+        if (!measurement) {
+          measurement = await this.prisma.measurement.findFirst({
+            where: {
+              userId,
+              deletedAt: null,
+            },
+            orderBy: { recordedAt: 'desc' },
+          });
+        }
+
+        // 3. Altrimenti peso sconosciuto (null, MAI fallback fisso 75)
+        const userWeightKg = measurement?.weightKg ?? null;
 
         const rawWallClock = p.durationMinutes
           ? Number(p.durationMinutes)
           : Math.max(1, Math.round((finishedAt.getTime() - startedAt.getTime()) / 60000));
 
-        const exercises = Array.isArray(p.exercises) ? p.exercises : [];
-        const flattenedSets: BiomechanicalSetInput[] = [];
-        for (const exData of exercises) {
-          if (exData.isSkipped) continue;
-          const exName = (exData.exerciseName || exData.name || 'Esercizio').trim();
-          const sets = Array.isArray(exData.sets) ? exData.sets : [];
-          for (const s of sets) {
-            flattenedSets.push({
-              setType: s.setType || 'WORKING',
-              repsCompleted: s.repsCompleted !== undefined && s.repsCompleted !== null ? Number(s.repsCompleted) : null,
-              weightKg: s.weightKg !== undefined && s.weightKg !== null ? Number(s.weightKg) : null,
-              rpe: s.rpe !== undefined && s.rpe !== null ? Number(s.rpe) : null,
-              exerciseName: exName,
-            });
+        // Clamping non-critical fields con warning nel logger (per non bloccare sync utente)
+        const clamp = (val: number | null | undefined, min: number, max: number, field: string): number | null => {
+          if (val === undefined || val === null || isNaN(val)) return null;
+          if (val < min) {
+            this.logger.warn(`Offline sync clamped ${field} from ${val} to min ${min} for user ${userId}`);
+            return min;
           }
+          if (val > max) {
+            this.logger.warn(`Offline sync clamped ${field} from ${val} to max ${max} for user ${userId}`);
+            return max;
+          }
+          return val;
+        };
+
+        const ALLOWED_SET_TYPES = ['WARMUP', 'WORKING', 'DROP', 'DROPSET', 'FAILURE'];
+        const exercises = Array.isArray(p.exercises) ? p.exercises : [];
+        const processedExercises: Array<{
+          exName: string;
+          isSkipped: boolean;
+          sets: Array<{
+            orderIndex: number;
+            setType: string;
+            repsCompleted: number | null;
+            weightKg: number | null;
+            rpe: number | null;
+          }>;
+        }> = [];
+
+        const flattenedSets: BiomechanicalSetInput[] = [];
+
+        for (let exIdx = 0; exIdx < exercises.length; exIdx++) {
+          const exData = exercises[exIdx];
+          const exName = (exData.exerciseName || exData.name || 'Esercizio').trim();
+          const isSkipped = Boolean(exData.isSkipped);
+          const rawSets = Array.isArray(exData.sets) ? exData.sets : [];
+          const clampedSets: Array<{
+            orderIndex: number;
+            setType: string;
+            repsCompleted: number | null;
+            weightKg: number | null;
+            rpe: number | null;
+          }> = [];
+
+          for (let sIdx = 0; sIdx < rawSets.length; sIdx++) {
+            const s = rawSets[sIdx];
+
+            let setType = s.setType ? String(s.setType).toUpperCase() : 'WORKING';
+            if (!ALLOWED_SET_TYPES.includes(setType)) {
+              this.logger.warn(`Offline sync mapped invalid setType "${s.setType}" to WORKING for user ${userId}`);
+              setType = 'WORKING';
+            }
+
+            const rawOrder = s.orderIndex !== undefined && s.orderIndex !== null ? Number(s.orderIndex) : sIdx + 1;
+            const orderIndex = clamp(rawOrder, 1, 100, `set[${exIdx},${sIdx}].orderIndex`) ?? sIdx + 1;
+
+            const repsCompleted = s.repsCompleted !== undefined && s.repsCompleted !== null
+              ? clamp(Number(s.repsCompleted), 0, 500, `set[${exIdx},${sIdx}].repsCompleted`)
+              : null;
+
+            const weightKg = s.weightKg !== undefined && s.weightKg !== null
+              ? clamp(Number(s.weightKg), 0, 1000, `set[${exIdx},${sIdx}].weightKg`)
+              : null;
+
+            const rpe = s.rpe !== undefined && s.rpe !== null
+              ? clamp(Number(s.rpe), 1, 10, `set[${exIdx},${sIdx}].rpe`)
+              : null;
+
+            clampedSets.push({
+              orderIndex,
+              setType,
+              repsCompleted,
+              weightKg,
+              rpe,
+            });
+
+            if (!isSkipped) {
+              flattenedSets.push({
+                setType,
+                repsCompleted,
+                weightKg,
+                rpe,
+                exerciseName: exName,
+              });
+            }
+          }
+
+          processedExercises.push({
+            exName,
+            isSkipped,
+            sets: clampedSets,
+          });
         }
 
         const expenditure = calculateWorkoutExpenditure({
           sets: flattenedSets,
-          userWeightKg,
+          userWeightKg: userWeightKg ?? undefined,
           wallClockDurationMinutes: rawWallClock,
         });
 
         const finalDurationMinutes = p.durationMinutes ? Number(p.durationMinutes) : expenditure.finalDurationMinutes;
 
-        // Tutela fisiologica minori (<18): stima MET adulti bloccata
+        // Tutela fisiologica: se età sconosciuta (birthDate == null), minorenne (<18) o peso sconosciuto => stima MET adulti bloccata
         const user = await this.prisma.user.findUnique({
           where: { id: userId },
           select: { birthDate: true },
         });
-        const isUnderage = user?.birthDate ? calculateAge(user.birthDate, startedAt) < 18 : false;
+
+        let isAgeKnown = false;
+        let isUnderage = false;
+        if (user?.birthDate) {
+          try {
+            const age = calculateAge(user.birthDate, startedAt);
+            isAgeKnown = true;
+            isUnderage = age < 18;
+          } catch {
+            isAgeKnown = false;
+          }
+        }
+
+        const isWeightKnown = userWeightKg !== null && userWeightKg > 0;
+        const isEligibleForAutoCalories = isAgeKnown && !isUnderage && isWeightKnown;
+
+        const rawManualCalories = p.manualCaloriesBurned !== undefined && p.manualCaloriesBurned !== null
+          ? Number(p.manualCaloriesBurned)
+          : null;
+        const clampedManualCalories = rawManualCalories !== null
+          ? clamp(rawManualCalories, 0, 10000, 'manualCaloriesBurned')
+          : null;
 
         let finalCalories: number | null = null;
-        if (isUnderage) {
-          finalCalories = p.manualCaloriesBurned ? Number(p.manualCaloriesBurned) : null;
+        if (clampedManualCalories !== null) {
+          finalCalories = clampedManualCalories;
+        } else if (isEligibleForAutoCalories) {
+          finalCalories = p.caloriesBurned ? Number(p.caloriesBurned) : expenditure.caloriesBurned;
         } else {
-          finalCalories = p.manualCaloriesBurned
-            ? Number(p.manualCaloriesBurned)
-            : p.caloriesBurned
-              ? Number(p.caloriesBurned)
-              : expenditure.caloriesBurned;
+          finalCalories = null;
         }
 
         const created = await this.prisma.$transaction(async (tx) => {
@@ -480,35 +589,31 @@ export class SyncService {
               finishedAt,
               durationMinutes: finalDurationMinutes,
               caloriesBurned: finalCalories,
-              manualCaloriesBurned: p.manualCaloriesBurned ? Number(p.manualCaloriesBurned) : undefined,
+              manualCaloriesBurned: clampedManualCalories ?? undefined,
             },
           });
 
-          const exercises = Array.isArray(p.exercises) ? p.exercises : [];
-          for (let exIdx = 0; exIdx < exercises.length; exIdx++) {
-            const exData = exercises[exIdx];
-            const exName = (exData.exerciseName || exData.name || 'Esercizio').trim();
-
+          for (let exIdx = 0; exIdx < processedExercises.length; exIdx++) {
+            const exData = processedExercises[exIdx];
             const logEx = await tx.workoutLogExercise.create({
               data: {
                 workoutLogId: log.id,
-                exerciseNameSnapshot: exName,
-                isSkipped: Boolean(exData.isSkipped),
+                exerciseNameSnapshot: exData.exName,
+                isSkipped: exData.isSkipped,
               },
             });
 
-            const sets = Array.isArray(exData.sets) ? exData.sets : [];
-            for (let sIdx = 0; sIdx < sets.length; sIdx++) {
-              const setData = sets[sIdx];
+            for (let sIdx = 0; sIdx < exData.sets.length; sIdx++) {
+              const setData = exData.sets[sIdx];
               await tx.workoutLogSet.create({
                 data: {
                   clientSideId: `${clientSideId}_set_${exIdx}_${sIdx}`,
                   workoutLogExerciseId: logEx.id,
-                  orderIndex: setData.orderIndex || sIdx + 1,
-                  setType: setData.setType || 'WORKING',
-                  weightKg: setData.weightKg !== undefined ? Number(setData.weightKg) : null,
-                  repsCompleted: setData.repsCompleted !== undefined ? Number(setData.repsCompleted) : null,
-                  rpe: setData.rpe !== undefined ? Number(setData.rpe) : null,
+                  orderIndex: setData.orderIndex,
+                  setType: setData.setType as any,
+                  weightKg: setData.weightKg,
+                  repsCompleted: setData.repsCompleted,
+                  rpe: setData.rpe,
                 },
               });
             }

@@ -12,7 +12,11 @@ describe('SyncService', () => {
       $transaction: vi.fn(async (cb) => cb(mockPrisma)),
       measurement: {
         findUnique: vi.fn(),
+        findFirst: vi.fn(),
         create: vi.fn(),
+      },
+      user: {
+        findUnique: vi.fn(),
       },
       nutritionLog: {
         findUnique: vi.fn(),
@@ -226,6 +230,105 @@ describe('SyncService', () => {
     expect(res.results[0].status).toBe('SYNCED');
     expect(res.results[0].serverId).toBe('existing-colazione-id');
     expect(mockPrisma.mealSlot.create).not.toHaveBeenCalled();
+  });
+
+  describe('CREATE_WORKOUT_LOG offline sync limits & clamping', () => {
+    it('clamps out-of-bounds workout set and calorie fields instead of rejecting mutation', async () => {
+      mockPrisma.workoutLog.findUnique.mockResolvedValueOnce(null);
+      // Historical measurement exists
+      mockPrisma.measurement.findFirst.mockResolvedValueOnce({ weightKg: 80 });
+      // Adult user
+      mockPrisma.user.findUnique.mockResolvedValueOnce({ birthDate: new Date('1990-01-01') });
+
+      mockPrisma.workoutLog.create.mockResolvedValueOnce({ id: 'srv-log-clamped' });
+      mockPrisma.workoutLogExercise.create.mockResolvedValueOnce({ id: 'srv-ex-1' });
+      mockPrisma.workoutLogSet.create.mockResolvedValueOnce({ id: 'srv-set-1' });
+
+      const mutation: OfflineMutationDto = {
+        id: 'client-workout-out-of-bounds',
+        type: MutationType.CREATE_WORKOUT_LOG,
+        timestamp: '2026-10-21T10:00:00Z',
+        payload: {
+          workoutName: 'Heavy Leg Day',
+          manualCaloriesBurned: 15000, // Exceeds 10000 limit -> clamp to 10000
+          exercises: [
+            {
+              exerciseName: 'Squat',
+              sets: [
+                {
+                  orderIndex: 250, // Exceeds 100 limit -> clamp to 100
+                  setType: 'INVALID_SUPERSET', // Invalid -> map to WORKING
+                  repsCompleted: 700, // Exceeds 500 limit -> clamp to 500
+                  weightKg: 1500, // Exceeds 1000 limit -> clamp to 1000
+                  rpe: 15, // Exceeds 10 limit -> clamp to 10
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      const res = await service.processBatchSync('user-1', [mutation]);
+
+      expect(res.results[0].status).toBe('SYNCED');
+      expect(res.results[0].serverId).toBe('srv-log-clamped');
+
+      // Check clamped log create data
+      expect(mockPrisma.workoutLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          manualCaloriesBurned: 10000,
+          caloriesBurned: 10000,
+        }),
+      });
+
+      // Check clamped set create data
+      expect(mockPrisma.workoutLogSet.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          orderIndex: 100,
+          setType: 'WORKING',
+          repsCompleted: 500,
+          weightKg: 1000,
+          rpe: 10,
+        }),
+      });
+    });
+
+    it('blocks automatic calorie estimation on offline sync when user age or weight is unknown', async () => {
+      mockPrisma.workoutLog.findUnique.mockResolvedValueOnce(null);
+      // No measurements
+      mockPrisma.measurement.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.measurement.findFirst.mockResolvedValueOnce(null);
+      // Unknown age (birthDate null)
+      mockPrisma.user.findUnique.mockResolvedValueOnce({ birthDate: null });
+
+      mockPrisma.workoutLog.create.mockResolvedValueOnce({ id: 'srv-log-unknown-bio' });
+      mockPrisma.workoutLogExercise.create.mockResolvedValueOnce({ id: 'srv-ex-1' });
+      mockPrisma.workoutLogSet.create.mockResolvedValueOnce({ id: 'srv-set-1' });
+
+      const mutation: OfflineMutationDto = {
+        id: 'client-workout-unknown-bio',
+        type: MutationType.CREATE_WORKOUT_LOG,
+        timestamp: '2026-10-21T10:00:00Z',
+        payload: {
+          workoutName: 'General Workout',
+          exercises: [
+            {
+              exerciseName: 'Bench Press',
+              sets: [{ orderIndex: 1, repsCompleted: 10, weightKg: 80, rpe: 8 }],
+            },
+          ],
+        },
+      };
+
+      const res = await service.processBatchSync('user-1', [mutation]);
+
+      expect(res.results[0].status).toBe('SYNCED');
+      expect(mockPrisma.workoutLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          caloriesBurned: null,
+        }),
+      });
+    });
   });
 });
 
