@@ -38,6 +38,19 @@ La decisione finale è richiesta tassativamente **prima dello Step 5** (motore d
 
 ---
 
+## Nota Architetturale: Calorie Model Versioning (v1 vs v2) & Bilancio Calorico
+
+1. **Log Storici v1 (`calorieModelVersion = 1`, default schema Prisma)**:
+   - I log storici creati prima dello Step 3 hanno `calorieModelVersion = 1` e `grossCaloriesBurned = null`.
+   - Il motore di bilancio calorico (TDEE / calorie balance) continua a utilizzare il valore già presente in `caloriesBurned` in modo invariato, garantendo la totale stabilità e coerenza dei bilanci passati.
+   - Lo script opzionale di ricalcolo retroattivo (con backup preventivo obbligatorio e conservazione del valore originale) fa parte dello **Step 5** e non viene eseguito nello Step 3.
+
+2. **Nuovi Log v2 (`calorieModelVersion = 2`)**:
+   - I nuovi log generati a partire dallo Step 3 memorizzano `grossCaloriesBurned` (dispendio lordo calcolato con formula ACSM) e `caloriesBurned` (dispendio netto, al netto del metabolismo basale pari a $1.05 \text{ kcal/kg/h}$).
+   - L'API e le interfacce utente utilizzano `caloriesBurned` (valore netto) per il calcolo del bilancio attivo TDEE, evitando il doppio conteggio del riposo basale.
+
+---
+
 ## Tabella di Stato — Step 1: Sicurezza & Hardening Preliminare
 
 | Voce Step 1 | Descrizione Requisito | Verifica Agente (Automatizzata) | Verifica Manuale Proprietario | Evidenza Tecnica (File, Test, Comando) | Note & Dettagli Operativi |

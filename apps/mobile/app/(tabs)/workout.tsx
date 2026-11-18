@@ -294,8 +294,22 @@ export default function WorkoutScreen() {
     setIsAddModalVisible(false);
   };
 
+  // Helper messaggio per idoneità stima calorie
+  const getEligibilityMessage = (eligibility: string): string | null => {
+    switch (eligibility) {
+      case 'MINOR':
+        return 'Non disp. per minorenni';
+      case 'AGE_UNKNOWN':
+        return 'Data nascita mancante';
+      case 'WEIGHT_UNKNOWN':
+        return 'Peso mancante';
+      default:
+        return null;
+    }
+  };
+
   // Calcolo volume e calorie stimate fisiologiche
-  const { totalVolumeKg, completedSetsCount, estimatedCalories } = React.useMemo(() => {
+  const { totalVolumeKg, completedSetsCount, estimatedCalories, eligibilityMessage } = React.useMemo(() => {
     let setsCount = 0;
     const setsInput: BiomechanicalSetInput[] = [];
 
@@ -331,6 +345,7 @@ export default function WorkoutScreen() {
       totalVolumeKg: result.totalWorkingVolumeKg,
       completedSetsCount: setsCount,
       estimatedCalories: isEligible ? result.caloriesBurned : null,
+      eligibilityMessage: getEligibilityMessage(eligibility),
     };
   }, [exercises, userBirthDate, userWeightKg, sessionStartTime]);
 
@@ -433,6 +448,11 @@ export default function WorkoutScreen() {
                 <Text style={[styles.statValue, { color: COLORS.secondary }]}>
                   {estimatedCalories !== null ? `~${estimatedCalories} kcal` : '— kcal'}
                 </Text>
+                {estimatedCalories === null && eligibilityMessage ? (
+                  <Text style={{ fontSize: 9, color: COLORS.tertiary, marginTop: 2, textAlign: 'center' }}>
+                    {eligibilityMessage}
+                  </Text>
+                ) : null}
               </View>
             </View>
 

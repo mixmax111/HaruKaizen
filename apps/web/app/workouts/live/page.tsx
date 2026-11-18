@@ -551,9 +551,23 @@ export default function LiveGymLoggerPage() {
     return vol;
   };
 
+  // Helper messaggio per idoneità stima calorie
+  const getEligibilityMessage = (eligibility: string): string | null => {
+    switch (eligibility) {
+      case 'MINOR':
+        return 'Stima non disponibile per minorenni';
+      case 'AGE_UNKNOWN':
+        return 'Data di nascita mancante nel profilo';
+      case 'WEIGHT_UNKNOWN':
+        return 'Misurazione peso mancante';
+      default:
+        return null;
+    }
+  };
+
   // Stima fisiologica biomeccanica calorie bruciate in tempo reale
   const liveExpenditure = useMemo(() => {
-    if (!session) return { caloriesBurned: null, effectiveDurationMinutes: 0, totalVolumeKg: 0 };
+    if (!session) return { caloriesBurned: null, eligibility: 'AGE_UNKNOWN', eligibilityMessage: null, effectiveDurationMinutes: 0, totalVolumeKg: 0 };
     const savedSets: BiomechanicalSetInput[] = [];
     session.exercises.forEach((ex) => {
       ex.sets.forEach((s) => {
@@ -585,6 +599,8 @@ export default function LiveGymLoggerPage() {
 
     return {
       caloriesBurned: isEligible ? result.caloriesBurned : null,
+      eligibility,
+      eligibilityMessage: getEligibilityMessage(eligibility),
       effectiveDurationMinutes: result.effectiveDurationMinutes,
       totalVolumeKg: result.totalWorkingVolumeKg,
     };
@@ -777,6 +793,11 @@ export default function LiveGymLoggerPage() {
                       ? `~${finishSummary.caloriesBurned} kcal`
                       : '— kcal'}
                   </span>
+                  {finishSummary.caloriesBurned === null && liveExpenditure.eligibilityMessage && (
+                    <span className="text-[10px] text-amber-400 block mt-0.5">
+                      {liveExpenditure.eligibilityMessage}
+                    </span>
+                  )}
                 </div>
 
                 <div className="p-3 rounded-2xl bg-surface-container border border-surface-container-high/60">
@@ -830,7 +851,12 @@ export default function LiveGymLoggerPage() {
                     {liveExpenditure.caloriesBurned !== null
                       ? `~${liveExpenditure.caloriesBurned} kcal`
                       : '— kcal'}
-                  </strong></span>
+                  </strong>
+                  {liveExpenditure.caloriesBurned === null && liveExpenditure.eligibilityMessage && (
+                    <span className="text-[10px] text-amber-400 ml-1">
+                      ({liveExpenditure.eligibilityMessage})
+                    </span>
+                  )}</span>
                 </div>
               </div>
 
