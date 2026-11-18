@@ -7,7 +7,8 @@
 *.tsbuildinfo
 
 # Logs
-logs
+/logs/
+!src/**/logs/
 *.log
 npm-debug.log*
 pnpm-debug.log*

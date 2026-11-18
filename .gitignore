@@ -283,8 +283,10 @@ playwright/.cache/
 # 13. LOG, CACHE & FILE TEMPORANEI
 # =============================================================================
 *.log
-logs/
-**/logs/
+/logs/
+apps/*/logs/
+packages/*/logs/
+!**/src/**/logs/
 .cache/
 **/.cache/
 tmp/
