@@ -437,6 +437,15 @@ export class SyncService {
         // 3. Altrimenti peso sconosciuto (null, MAI fallback fisso 75)
         const userWeightKg = measurement?.weightKg ?? null;
 
+        // Warning consultivo se misurazione più vecchia di 90 giorni rispetto al workout
+        if (measurement && measurement.recordedAt) {
+          const diffMs = Math.abs(startedAt.getTime() - new Date(measurement.recordedAt).getTime());
+          const diffDays = diffMs / (1000 * 60 * 60 * 24);
+          if (diffDays > 90) {
+            this.logger.warn(`Offline sync: peso non aggiornato (>90 giorni) per utente ${userId}`);
+          }
+        }
+
         const rawWallClock = p.durationMinutes
           ? Number(p.durationMinutes)
           : Math.max(1, Math.round((finishedAt.getTime() - startedAt.getTime()) / 60000));

@@ -241,6 +241,17 @@ export class WorkoutLogsService {
       finalCaloriesBurned = null;
     }
 
+    // Se la misurazione utilizzata ha recordedAt più vecchio di 90 giorni rispetto alla sessione:
+    // segnalare warning consultivo "peso non aggiornato" (senza bloccare la stima)
+    let weightWarning: string | null = null;
+    if (measurement && measurement.recordedAt) {
+      const diffMs = Math.abs(new Date(log.date).getTime() - new Date(measurement.recordedAt).getTime());
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+      if (diffDays > 90) {
+        weightWarning = 'peso non aggiornato';
+      }
+    }
+
     const updatedLog = await this.prisma.workoutLog.update({
       where: { id: logId },
       data: {
@@ -264,6 +275,7 @@ export class WorkoutLogsService {
         caloriesBurned: finalCaloriesBurned,
         manualCaloriesBurned: manualCalories ?? null,
         totalWorkingVolumeKg: expenditure.totalWorkingVolumeKg,
+        weightWarning,
       },
     };
   }

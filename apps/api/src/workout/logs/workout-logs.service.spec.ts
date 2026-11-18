@@ -305,5 +305,40 @@ describe('WorkoutLogsService', () => {
       const res = await service.finishSession('user-test', 'log-test');
       expect(res.summary.caloriesBurned).toBeNull();
     });
+
+    it('returns weightWarning "peso non aggiornato" if measurement is older than 90 days without blocking estimate', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({ birthDate: new Date('1990-01-01') });
+      mockPrisma.workoutLog.findUnique.mockResolvedValueOnce(baseLog); // workoutDate = 2026-06-01
+      // 100 days older than workoutDate
+      const oldRecordedAt = new Date('2026-02-20T10:00:00Z');
+      mockPrisma.measurement.findFirst.mockResolvedValueOnce({ weightKg: 82, recordedAt: oldRecordedAt });
+      mockPrisma.workoutLog.update.mockImplementationOnce((args: any) => Promise.resolve({
+        id: 'log-test',
+        ...args.data,
+        logExercises: [],
+      }));
+
+      const res = await service.finishSession('user-test', 'log-test');
+      expect(res.summary.caloriesBurned).not.toBeNull();
+      expect(res.summary.caloriesBurned).toBeGreaterThan(0);
+      expect(res.summary.weightWarning).toBe('peso non aggiornato');
+    });
+
+    it('returns weightWarning null if measurement is recent (<= 90 days)', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({ birthDate: new Date('1990-01-01') });
+      mockPrisma.workoutLog.findUnique.mockResolvedValueOnce(baseLog); // workoutDate = 2026-06-01
+      // 30 days old
+      const recentRecordedAt = new Date('2026-05-02T10:00:00Z');
+      mockPrisma.measurement.findFirst.mockResolvedValueOnce({ weightKg: 82, recordedAt: recentRecordedAt });
+      mockPrisma.workoutLog.update.mockImplementationOnce((args: any) => Promise.resolve({
+        id: 'log-test',
+        ...args.data,
+        logExercises: [],
+      }));
+
+      const res = await service.finishSession('user-test', 'log-test');
+      expect(res.summary.caloriesBurned).not.toBeNull();
+      expect(res.summary.weightWarning).toBeNull();
+    });
   });
 });
