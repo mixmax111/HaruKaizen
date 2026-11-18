@@ -257,30 +257,39 @@ async function main() {
 
   let foodCount = 0;
   for (const food of certifiedFoods) {
-    await prisma.foodItem.upsert({
-      where: { barcode: food.barcode },
-      update: {
-        name:         food.name,
-        calories100g: food.calories100g,
-        protein100g:  food.protein100g,
-        carbs100g:    food.carbs100g,
-        fat100g:      food.fat100g,
-        fiber100g:    food.fiber100g,
-        sodium100g:   food.sodium100g,
-        isVerified:   true,
-      },
-      create: {
-        barcode:      food.barcode,
-        name:         food.name,
-        calories100g: food.calories100g,
-        protein100g:  food.protein100g,
-        carbs100g:    food.carbs100g,
-        fat100g:      food.fat100g,
-        fiber100g:    food.fiber100g,
-        sodium100g:   food.sodium100g,
-        isVerified:   true,
-      },
+    const existing = await prisma.foodItem.findFirst({
+      where: { barcode: food.barcode, userId: null, deletedAt: null },
     });
+    if (existing) {
+      await prisma.foodItem.update({
+        where: { id: existing.id },
+        data: {
+          name:         food.name,
+          calories100g: food.calories100g,
+          protein100g:  food.protein100g,
+          carbs100g:    food.carbs100g,
+          fat100g:      food.fat100g,
+          fiber100g:    food.fiber100g,
+          sodium100g:   food.sodium100g,
+          isVerified:   true,
+        },
+      });
+    } else {
+      await prisma.foodItem.create({
+        data: {
+          barcode:      food.barcode,
+          name:         food.name,
+          calories100g: food.calories100g,
+          protein100g:  food.protein100g,
+          carbs100g:    food.carbs100g,
+          fat100g:      food.fat100g,
+          fiber100g:    food.fiber100g,
+          sodium100g:   food.sodium100g,
+          isVerified:   true,
+          source:       'CERTIFIED_SEED',
+        },
+      });
+    }
     foodCount++;
   }
   console.log(`✅ [Seed] Cibi certificati inseriti/aggiornati: ${foodCount}`);
