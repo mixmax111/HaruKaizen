@@ -260,7 +260,10 @@ backups/
 *.dump
 *.tar.gz
 
-# Consenti eventuali fixture seed esplicite se create in cartelle dedicate
+# Consenti migrazioni Prisma e fixture seed esplicite
+!**/migrations/**/migration.sql
+!prisma/migrations/**/*.sql
+!migrations/**/*.sql
 !prisma/seeds/*.sql
 !apps/api/prisma/seeds/*.sql
 
