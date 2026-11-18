@@ -3,13 +3,15 @@
 import React, { useEffect, useState } from 'react';
 import { AppLayout } from '../../components/layout/app-layout';
 import { apiClient } from '../../lib/api';
-import { Dumbbell, Plus, CheckCircle, Play } from 'lucide-react';
+import { Dumbbell, Plus, CheckCircle, Play, UploadCloud } from 'lucide-react';
 import { SmartImportModal } from '../../components/modals/smart-import-modal';
+import { CsvPortabilityModal } from '../../components/portability/CsvPortabilityModal';
 
 export default function WorkoutsPage() {
   const [plans, setPlans] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPortabilityModalOpen, setIsPortabilityModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const fetchWorkouts = async () => {
@@ -76,12 +78,26 @@ export default function WorkoutsPage() {
               Organizza la tua routine settimanale e monitora il progressive overload
             </p>
           </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-pink-500 hover:bg-pink-600 text-white rounded-xl text-xs font-semibold shadow-lg shadow-pink-500/20 transition"
-          >
-            <Plus size={16} /> Nuova Scheda / CSV
-          </button>
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => (window.location.href = '/workouts/live')}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-500/20 transition cursor-pointer"
+            >
+              <Play size={15} className="fill-current" /> Live Gym Logger
+            </button>
+            <button
+              onClick={() => setIsPortabilityModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold shadow transition cursor-pointer"
+            >
+              <UploadCloud size={15} className="text-emerald-400" /> Importa CSV/XLSX & Template
+            </button>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-pink-500 hover:bg-pink-600 text-white rounded-xl text-xs font-semibold shadow-lg shadow-pink-500/20 transition cursor-pointer"
+            >
+              <Plus size={16} /> Nuova Scheda / CSV
+            </button>
+          </div>
         </div>
 
         {/* Schede Utente */}
@@ -154,6 +170,13 @@ export default function WorkoutsPage() {
           onClose={() => setIsModalOpen(false)}
           title="Crea Nuova Scheda di Allenamento"
           onSave={handleSaveImportedPlan}
+        />
+
+        <CsvPortabilityModal
+          isOpen={isPortabilityModalOpen}
+          onClose={() => setIsPortabilityModalOpen(false)}
+          initialTarget="WORKOUT_LOGS"
+          onSuccess={fetchWorkouts}
         />
       </div>
     </AppLayout>

@@ -13,7 +13,7 @@ COPY apps/web/package*.json ./apps/web/
 COPY schema.prisma ./schema.prisma
 
 # Installazione dipendenze pulita
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 # --- STAGE 2: Builder ---
 FROM node:22-alpine AS builder
@@ -24,6 +24,8 @@ COPY . .
 # Variabili d'ambiente per il build
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # Compila librerie condivise
 RUN npm run build --workspace=@harukaizen/shared

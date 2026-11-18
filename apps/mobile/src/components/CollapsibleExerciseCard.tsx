@@ -1,10 +1,10 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
+  Platform,
 } from 'react-native';
 import { COLORS } from '../config';
 import { hapticFeedback } from '../utils/haptics';
@@ -16,8 +16,17 @@ interface ExerciseCardProps {
   onToggleSet: (exerciseIndex: number, setIndex: number) => void;
   onUpdateWeight: (exerciseIndex: number, setIndex: number, delta: number) => void;
   onUpdateReps: (exerciseIndex: number, setIndex: number, delta: number) => void;
+  onUpdateSetType?: (exerciseIndex: number, setIndex: number) => void;
+  onUpdateRpe?: (exerciseIndex: number, setIndex: number, delta: number) => void;
   onAddSet: (exerciseIndex: number) => void;
 }
+
+const SET_TYPE_LABELS: Record<string, string> = {
+  WORKING: 'W',
+  WARMUP: 'WU',
+  DROPSET: 'D',
+  FAILURE: 'F',
+};
 
 export const CollapsibleExerciseCard: React.FC<ExerciseCardProps> = ({
   exercise,
@@ -25,10 +34,11 @@ export const CollapsibleExerciseCard: React.FC<ExerciseCardProps> = ({
   onToggleSet,
   onUpdateWeight,
   onUpdateReps,
+  onUpdateSetType,
+  onUpdateRpe,
   onAddSet,
 }) => {
   const allCompleted = exercise.sets.length > 0 && exercise.sets.every((s) => s.completed);
-  // Se tutte le serie sono completate, collassa automaticamente lasciando la possibilità di espandere
   const [isManuallyExpanded, setIsManuallyExpanded] = useState<boolean>(false);
   const isCollapsed = allCompleted && !isManuallyExpanded;
 
@@ -49,7 +59,7 @@ export const CollapsibleExerciseCard: React.FC<ExerciseCardProps> = ({
           <View style={{ flex: 1, marginLeft: 10 }}>
             <Text style={styles.exerciseNameCollapsed}>{exercise.exerciseName}</Text>
             <Text style={styles.exerciseSummaryText}>
-              {exercise.sets.length} serie completate • Tocca per visualizzare
+              {exercise.sets.length} serie completate • Tocca per espandere
             </Text>
           </View>
           <Text style={styles.expandChevron}>▼</Text>
@@ -70,7 +80,7 @@ export const CollapsibleExerciseCard: React.FC<ExerciseCardProps> = ({
           }
         }}
       >
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.exerciseName}>{exercise.exerciseName}</Text>
           {exercise.notes ? <Text style={styles.exerciseNotes}>{exercise.notes}</Text> : null}
         </View>
@@ -81,68 +91,102 @@ export const CollapsibleExerciseCard: React.FC<ExerciseCardProps> = ({
         )}
       </TouchableOpacity>
 
-      {/* Tabella Serie */}
+      {/* Tabella Intestazione Serie: SET, TYPE, KG, REPS, RPE, [✓] */}
       <View style={styles.setsHeaderRow}>
-        <Text style={[styles.setColHeader, { flex: 0.8 }]}>SERIE</Text>
-        <Text style={[styles.setColHeader, { flex: 2 }]}>PESO (KG)</Text>
-        <Text style={[styles.setColHeader, { flex: 2 }]}>REPS</Text>
-        <Text style={[styles.setColHeader, { flex: 1.2, textAlign: 'center' }]}>STATO</Text>
+        <Text style={[styles.setColHeader, { flex: 0.6 }]}>SET</Text>
+        <Text style={[styles.setColHeader, { flex: 0.8, textAlign: 'center' }]}>TYPE</Text>
+        <Text style={[styles.setColHeader, { flex: 1.6 }]}>KG</Text>
+        <Text style={[styles.setColHeader, { flex: 1.4 }]}>REPS</Text>
+        <Text style={[styles.setColHeader, { flex: 1.1, textAlign: 'center' }]}>RPE</Text>
+        <Text style={[styles.setColHeader, { flex: 0.9, textAlign: 'center' }]}>[✓]</Text>
       </View>
 
-      {exercise.sets.map((set, sIdx) => (
-        <View
-          key={set.id}
-          style={[styles.setRow, set.completed && styles.setRowCompleted]}
-        >
-          <Text style={[styles.setNumber, { flex: 0.8 }]}>{set.setNumber}</Text>
+      {exercise.sets.map((set, sIdx) => {
+        const typeKey = set.setType || 'WORKING';
+        const typeLabel = SET_TYPE_LABELS[typeKey] || 'W';
+        const rpeVal = set.rpe || 8;
 
-          {/* Stepper Peso (KG) */}
-          <View style={[styles.stepperContainer, { flex: 2 }]}>
-            <TouchableOpacity
-              style={styles.stepBtn}
-              onPress={() => onUpdateWeight(exerciseIndex, sIdx, -2.5)}
-            >
-              <Text style={styles.stepBtnText}>-</Text>
-            </TouchableOpacity>
-            <Text style={styles.stepperValue}>{set.weightKg}</Text>
-            <TouchableOpacity
-              style={styles.stepBtn}
-              onPress={() => onUpdateWeight(exerciseIndex, sIdx, +2.5)}
-            >
-              <Text style={styles.stepBtnText}>+</Text>
-            </TouchableOpacity>
-          </View>
+        return (
+          <View
+            key={set.id}
+            style={[styles.setRow, set.completed && styles.setRowCompleted]}
+          >
+            {/* Col 1: Set Number */}
+            <Text style={[styles.setNumber, { flex: 0.6 }]}>{set.setNumber}</Text>
 
-          {/* Stepper Ripetizioni */}
-          <View style={[styles.stepperContainer, { flex: 2 }]}>
-            <TouchableOpacity
-              style={styles.stepBtn}
-              onPress={() => onUpdateReps(exerciseIndex, sIdx, -1)}
-            >
-              <Text style={styles.stepBtnText}>-</Text>
-            </TouchableOpacity>
-            <Text style={styles.stepperValue}>{set.repsCompleted}</Text>
-            <TouchableOpacity
-              style={styles.stepBtn}
-              onPress={() => onUpdateReps(exerciseIndex, sIdx, +1)}
-            >
-              <Text style={styles.stepBtnText}>+</Text>
-            </TouchableOpacity>
-          </View>
+            {/* Col 2: Set Type Button (W / WU / D / F) */}
+            <View style={{ flex: 0.8, alignItems: 'center' }}>
+              <TouchableOpacity
+                style={[
+                  styles.typeBtn,
+                  typeLabel === 'WU' && styles.typeBtnWarmup,
+                  typeLabel === 'F' && styles.typeBtnFailure,
+                  typeLabel === 'D' && styles.typeBtnDropset,
+                ]}
+                onPress={() => onUpdateSetType && onUpdateSetType(exerciseIndex, sIdx)}
+              >
+                <Text style={styles.typeBtnText}>{typeLabel}</Text>
+              </TouchableOpacity>
+            </View>
 
-          {/* Checkbox Serie Completata */}
-          <View style={{ flex: 1.2, alignItems: 'center' }}>
-            <TouchableOpacity
-              style={[styles.checkBtn, set.completed && styles.checkBtnActive]}
-              onPress={() => onToggleSet(exerciseIndex, sIdx)}
-            >
-              <Text style={[styles.checkText, set.completed && styles.checkTextActive]}>
-                {set.completed ? '✓' : '○'}
-              </Text>
-            </TouchableOpacity>
+            {/* Col 3: Stepper Peso (KG) */}
+            <View style={[styles.stepperContainer, { flex: 1.6 }]}>
+              <TouchableOpacity
+                style={styles.stepBtn}
+                onPress={() => onUpdateWeight(exerciseIndex, sIdx, -2.5)}
+              >
+                <Text style={styles.stepBtnText}>-</Text>
+              </TouchableOpacity>
+              <Text style={styles.stepperValue}>{set.weightKg}</Text>
+              <TouchableOpacity
+                style={styles.stepBtn}
+                onPress={() => onUpdateWeight(exerciseIndex, sIdx, +2.5)}
+              >
+                <Text style={styles.stepBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Col 4: Stepper Ripetizioni */}
+            <View style={[styles.stepperContainer, { flex: 1.4 }]}>
+              <TouchableOpacity
+                style={styles.stepBtn}
+                onPress={() => onUpdateReps(exerciseIndex, sIdx, -1)}
+              >
+                <Text style={styles.stepBtnText}>-</Text>
+              </TouchableOpacity>
+              <Text style={styles.stepperValue}>{set.repsCompleted}</Text>
+              <TouchableOpacity
+                style={styles.stepBtn}
+                onPress={() => onUpdateReps(exerciseIndex, sIdx, +1)}
+              >
+                <Text style={styles.stepBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Col 5: Stepper RPE [5-10] */}
+            <View style={{ flex: 1.1, alignItems: 'center' }}>
+              <TouchableOpacity
+                style={styles.rpeBtn}
+                onPress={() => onUpdateRpe && onUpdateRpe(exerciseIndex, sIdx, 0.5)}
+              >
+                <Text style={styles.rpeBtnText}>@{rpeVal}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Col 6: Checkbox Serie Completata [✓] */}
+            <View style={{ flex: 0.9, alignItems: 'center' }}>
+              <TouchableOpacity
+                style={[styles.checkBtn, set.completed && styles.checkBtnActive]}
+                onPress={() => onToggleSet(exerciseIndex, sIdx)}
+              >
+                <Text style={[styles.checkText, set.completed && styles.checkTextActive]}>
+                  {set.completed ? '✓' : '○'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      ))}
+        );
+      })}
 
       <TouchableOpacity
         style={styles.btnAddSet}
@@ -151,7 +195,7 @@ export const CollapsibleExerciseCard: React.FC<ExerciseCardProps> = ({
           onAddSet(exerciseIndex);
         }}
       >
-        <Text style={styles.btnAddSetText}>+ Aggiungi Serie</Text>
+        <Text style={styles.btnAddSetText}>+ AGGIUNGI SERIE</Text>
       </TouchableOpacity>
     </View>
   );
@@ -160,23 +204,23 @@ export const CollapsibleExerciseCard: React.FC<ExerciseCardProps> = ({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: '#27272a',
+    padding: 14,
+    marginBottom: 12,
   },
   cardAllDone: {
-    borderColor: 'rgba(16, 185, 129, 0.4)',
+    borderColor: 'rgba(78,222,163,0.3)',
+    backgroundColor: '#12171f',
   },
   cardCollapsed: {
-    backgroundColor: '#18181b',
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 12,
+    backgroundColor: COLORS.card,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.25)',
+    borderColor: 'rgba(78,222,163,0.3)',
+    padding: 12,
+    marginBottom: 10,
   },
   collapsedHeader: {
     flexDirection: 'row',
@@ -186,28 +230,30 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: COLORS.primary,
+    backgroundColor: 'rgba(78,222,163,0.15)',
+    borderWidth: 1,
+    borderColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   checkBadgeText: {
-    color: '#09090b',
-    fontWeight: '800',
+    color: COLORS.primary,
     fontSize: 13,
+    fontWeight: 'bold',
   },
   exerciseNameCollapsed: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '700',
+    color: '#e4e4e7',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   exerciseSummaryText: {
-    color: COLORS.textMuted,
+    color: '#71717a',
     fontSize: 11,
     marginTop: 2,
   },
   expandChevron: {
-    color: COLORS.textDim,
-    fontSize: 12,
+    color: '#71717a',
+    fontSize: 11,
   },
   cardHeaderTouch: {
     flexDirection: 'row',
@@ -216,110 +262,163 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   exerciseName: {
-    color: COLORS.text,
-    fontSize: 17,
-    fontWeight: '700',
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: 'bold',
   },
   exerciseNotes: {
-    color: COLORS.textMuted,
-    fontSize: 12,
+    color: '#9ca3af',
+    fontSize: 11,
     marginTop: 2,
+    fontStyle: 'italic',
   },
   allDoneTag: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    backgroundColor: 'rgba(78,222,163,0.15)',
+    borderWidth: 1,
+    borderColor: COLORS.primary,
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   allDoneTagText: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     color: COLORS.primary,
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    fontSize: 9,
+    fontWeight: 'bold',
   },
   setsHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 8,
+    paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: '#27272a',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   setColHeader: {
-    color: COLORS.textDim,
-    fontSize: 11,
-    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontSize: 9,
+    color: '#71717a',
+    fontWeight: 'bold',
   },
   setRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderBottomWidth: 1,
-    borderBottomColor: '#27272a',
+    borderBottomColor: '#1e1f26',
   },
   setRowCompleted: {
-    backgroundColor: 'rgba(16, 185, 129, 0.05)',
+    opacity: 0.75,
   },
   setNumber: {
-    color: COLORS.textMuted,
-    fontSize: 14,
-    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    color: '#a1a1aa',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  typeBtn: {
+    backgroundColor: '#1e1f26',
+    borderWidth: 1,
+    borderColor: '#3f3f46',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    minWidth: 26,
+    alignItems: 'center',
+  },
+  typeBtnWarmup: {
+    borderColor: '#eab308',
+  },
+  typeBtnFailure: {
+    borderColor: '#ef4444',
+  },
+  typeBtnDropset: {
+    borderColor: '#8b5cf6',
+  },
+  typeBtnText: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    color: '#e4e4e7',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   stepperContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'center',
+    backgroundColor: '#181920',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#27272a',
+    paddingHorizontal: 2,
+    paddingVertical: 2,
+    marginHorizontal: 3,
   },
   stepBtn: {
-    backgroundColor: '#27272a',
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   stepBtnText: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: '700',
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   stepperValue: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: '700',
-    minWidth: 32,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+    minWidth: 26,
     textAlign: 'center',
   },
+  rpeBtn: {
+    backgroundColor: '#181920',
+    borderWidth: 1,
+    borderColor: '#3f3f46',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 3,
+  },
+  rpeBtnText: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    color: '#38bdf8',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
   checkBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#1e1f26',
     borderWidth: 1,
     borderColor: '#3f3f46',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#18181b',
   },
   checkBtnActive: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
   },
   checkText: {
-    color: COLORS.textDim,
-    fontSize: 16,
-    fontWeight: '700',
+    color: '#71717a',
+    fontSize: 14,
   },
   checkTextActive: {
-    color: '#09090b',
+    color: COLORS.background,
+    fontWeight: 'bold',
   },
   btnAddSet: {
+    marginTop: 8,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#3f3f46',
     alignItems: 'center',
-    paddingVertical: 10,
-    marginTop: 6,
   },
   btnAddSetText: {
-    color: COLORS.primary,
-    fontSize: 13,
-    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    color: '#a1a1aa',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
 });

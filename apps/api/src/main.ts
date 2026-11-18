@@ -16,7 +16,7 @@ async function bootstrap() {
   app.use(helmet());
   app.use(cookieParser());
 
-  // CORS limitato alla variabile d'ambiente WEB_ORIGIN e client mobile nativi (senza origin)
+  // CORS autorizzato per host locale, LAN, subnet e client mobile nativi (senza origin)
   const allowedWebOrigin = process.env.WEB_ORIGIN || 'http://localhost:3001';
   app.enableCors({
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
@@ -24,10 +24,11 @@ async function bootstrap() {
       if (
         !origin ||
         origin === allowedWebOrigin ||
-        origin === 'http://localhost:3000' ||
-        origin === 'http://localhost:3001' ||
+        origin.startsWith('http://localhost:') ||
+        origin.startsWith('http://127.0.0.1:') ||
         origin.startsWith('http://192.168.') ||
-        origin.startsWith('http://10.')
+        origin.startsWith('http://10.') ||
+        origin.startsWith('http://172.')
       ) {
         callback(null, true);
       } else {
@@ -64,4 +65,3 @@ async function bootstrap() {
 }
 
 await bootstrap();
-

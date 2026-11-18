@@ -61,30 +61,30 @@ export function StatCard({
       <div className="flex items-baseline justify-between pt-space-sm pb-space-xs">
         <div>
           <div className="flex items-baseline gap-2">
-            <span className="font-label-data-lg text-label-data-lg font-bold text-on-surface">
+            <span className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-on-surface">
               {value}
             </span>
             {valueUnit && (
-              <span className="text-body-sm font-body-sm font-normal text-outline">
+              <span className="font-sans text-xs sm:text-sm font-normal text-outline">
                 {valueUnit}
               </span>
             )}
             {subtitle && !valueUnit && (
-              <span className="font-body-sm text-body-sm text-outline">
+              <span className="font-sans text-xs text-outline">
                 {subtitle}
               </span>
             )}
           </div>
 
           {trendText && (
-            <span className={`font-label-data-sm text-label-data-sm ${trendColorClass} flex items-center gap-1 mt-0.5`}>
+            <span className={`font-sans text-xs ${trendColorClass} flex items-center gap-1 mt-1 font-medium`}>
               {TrendIcon && <TrendIcon className="text-body-sm w-3.5 h-3.5" />}
               {trendText}
             </span>
           )}
 
           {subtitle && valueUnit && (
-            <p className="font-body-sm text-body-sm text-on-surface-variant truncate mt-0.5">
+            <p className="font-sans text-xs text-on-surface-variant truncate mt-1">
               {subtitle}
             </p>
           )}
@@ -131,13 +131,13 @@ export function StatCard({
       )}
 
       {/* Footer Info Row */}
-      <div className="flex justify-between items-center mt-1.5 font-label-data-sm text-label-data-sm text-outline">
+      <div className="flex justify-between items-center mt-2 font-sans text-xs text-outline">
         <div>
           {statusBadge ? (
             <div
               className={`flex items-center gap-1.5 px-2 py-0.5 rounded ${
                 statusBadge.bgClass || 'bg-surface-container'
-              } font-label-data-sm text-label-data-sm ${
+              } font-sans text-xs ${
                 statusBadge.colorClass || 'text-primary'
               }`}
             >

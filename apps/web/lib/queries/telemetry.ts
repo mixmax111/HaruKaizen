@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { apiClient } from '../api';
+import { apiClient, getAccessToken } from '../api';
 
 export interface NutritionSummary {
   totalCalories: number;
@@ -15,8 +15,9 @@ export interface NutritionSummary {
 export interface BodyMeasurement {
   id: string;
   weightKg: number;
-  date: string;
-  bodyFatPercentage?: number;
+  recordedAt: string;
+  date?: string;
+  bodyFatPercentage?: number | null;
 }
 
 export interface WorkoutLogSession {
@@ -45,47 +46,55 @@ export interface AiInsight {
 
 export function useTelemetryNutrition(date?: string) {
   const queryDate = date || new Date().toISOString().split('T')[0];
+  const token = getAccessToken();
   return useQuery<NutritionSummary>({
-    queryKey: ['telemetry', 'nutrition', queryDate],
+    queryKey: ['telemetry', 'nutrition', queryDate, token],
     queryFn: async () => {
       const res = await apiClient.get(`/nutrition/summary`, {
         params: { date: queryDate },
       });
       return res.data?.data || res.data;
     },
+    enabled: Boolean(token),
     staleTime: 60 * 1000,
   });
 }
 
 export function useTelemetryMeasurements() {
+  const token = getAccessToken();
   return useQuery<BodyMeasurement[]>({
-    queryKey: ['telemetry', 'measurements'],
+    queryKey: ['telemetry', 'measurements', token],
     queryFn: async () => {
       const res = await apiClient.get('/measurements');
       return res.data?.data || res.data || [];
     },
+    enabled: Boolean(token),
     staleTime: 60 * 1000,
   });
 }
 
 export function useTelemetryWorkouts() {
+  const token = getAccessToken();
   return useQuery<WorkoutLogSession[]>({
-    queryKey: ['telemetry', 'workouts'],
+    queryKey: ['telemetry', 'workouts', token],
     queryFn: async () => {
       const res = await apiClient.get('/workout/logs');
       return res.data?.data || res.data || [];
     },
+    enabled: Boolean(token),
     staleTime: 60 * 1000,
   });
 }
 
 export function useTelemetryAiInsights() {
+  const token = getAccessToken();
   return useQuery<AiInsight[]>({
-    queryKey: ['telemetry', 'ai-insights'],
+    queryKey: ['telemetry', 'ai-insights', token],
     queryFn: async () => {
       const res = await apiClient.get('/ai/insights');
       return res.data?.data || res.data || [];
     },
+    enabled: Boolean(token),
     staleTime: 60 * 1000,
   });
 }

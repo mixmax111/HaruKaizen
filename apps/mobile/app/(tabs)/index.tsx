@@ -13,7 +13,9 @@ import { useRouter } from 'expo-router';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, API_BASE_URL } from '../../src/config';
+import { apiClient } from '../../src/services/api';
 import { useSyncStore } from '../../src/stores/syncStore';
+import { useOfflineSyncStore } from '../../src/services/offlineSyncQueue';
 import { hapticFeedback } from '../../src/utils/haptics';
 
 export default function MobileTelemetryHomeScreen() {
@@ -29,6 +31,13 @@ export default function MobileTelemetryHomeScreen() {
     processSyncQueue,
     refreshLogs,
   } = useSyncStore();
+
+  const {
+    queue: offlineQueue,
+    isSyncing: isOfflineSyncing,
+    initializeQueue,
+    flushQueue: flushOfflineQueue,
+  } = useOfflineSyncStore();
 
   const [isConnected, setIsConnected] = useState<boolean | null>(true);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -47,6 +56,7 @@ export default function MobileTelemetryHomeScreen() {
 
   useEffect(() => {
     initializeStore();
+    initializeQueue();
 
     // Listener connettività di rete
     const unsubscribe = NetInfo.addEventListener((state) => {
@@ -54,6 +64,7 @@ export default function MobileTelemetryHomeScreen() {
       setIsConnected(online);
       if (online) {
         processSyncQueue();
+        flushOfflineQueue();
       }
     });
 
@@ -62,21 +73,16 @@ export default function MobileTelemetryHomeScreen() {
       try {
         const token = await AsyncStorage.getItem('@harukaizen:auth_token');
         setIsAuthenticated(!!token);
-        const headers: Record<string, string> = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
 
         const today = new Date().toISOString().split('T')[0];
-        const res = await fetch(`${API_BASE_URL}/nutrition/summary?date=${today}`, { headers });
-        if (res.ok) {
-          const json = await res.json();
-          const summary = json.data || json;
-          if (summary) {
-            setApiData((prev) => ({
-              ...prev,
-              calories: summary.totalCalories || prev.calories,
-              caloriesTarget: summary.calorieTarget || prev.caloriesTarget,
-            }));
-          }
+        const res = await apiClient.get(`/nutrition/summary?date=${today}`);
+        const summary = res.data?.data || res.data;
+        if (summary) {
+          setApiData((prev) => ({
+            ...prev,
+            calories: summary.totalCalories || prev.calories,
+            caloriesTarget: summary.calorieTarget || prev.caloriesTarget,
+          }));
         }
       } catch (err) {
         // Fallback silenzioso su telemetria locale
@@ -85,17 +91,23 @@ export default function MobileTelemetryHomeScreen() {
 
     fetchLiveTelemetry();
     return () => unsubscribe();
-  }, [initializeStore, processSyncQueue]);
+  }, [initializeStore, initializeQueue, processSyncQueue, flushOfflineQueue]);
 
-  const totalPending = workoutQueue.length + photoQueue.length + nutritionQueue.length;
+  const totalPending =
+    workoutQueue.length + photoQueue.length + nutritionQueue.length + offlineQueue.length;
+
+  const isAnySyncing = isSyncing || isOfflineSyncing;
 
   const handleManualSync = async () => {
     await hapticFeedback.medium();
-    const res = await processSyncQueue();
+    const [resLegacy, resOffline] = await Promise.all([
+      processSyncQueue(),
+      flushOfflineQueue(),
+    ]);
     await hapticFeedback.success();
     Alert.alert(
       'Sincronizzazione Terminata',
-      `Elementi sincronizzati: ${res.success}. Falliti/In attesa: ${res.failed}.`
+      `WAL: ${resLegacy.success} sinc, ${resLegacy.failed} attesa.\nOutbox Offline: ${resOffline.synced} sinc, ${resOffline.failed} attesa.`
     );
   };
 
@@ -127,12 +139,12 @@ export default function MobileTelemetryHomeScreen() {
                       onPress: async () => {
                         await AsyncStorage.removeItem('@harukaizen:auth_token');
                         setIsAuthenticated(false);
-                        router.push('/(auth)/login' as any);
+                        router.replace('/(auth)/login' as any);
                       },
                     },
                   ]);
                 } else {
-                  router.push('/(auth)/login' as any);
+                  router.replace('/(auth)/login' as any);
                 }
               }}
               style={styles.authBadgeBtn}
@@ -231,7 +243,7 @@ export default function MobileTelemetryHomeScreen() {
                   : `${totalPending} events pending upload`}
               </Text>
             </View>
-            {isSyncing && <ActivityIndicator color={COLORS.primary} />}
+            {isAnySyncing && <ActivityIndicator color={COLORS.primary} />}
           </View>
 
           <View style={styles.queueStatsRow}>
@@ -247,16 +259,22 @@ export default function MobileTelemetryHomeScreen() {
               <Text style={styles.queueVal}>{photoQueue.length}</Text>
               <Text style={styles.queueLabel}>MEDIA_GHOST</Text>
             </View>
+            <View style={styles.queueCol}>
+              <Text style={[styles.queueVal, offlineQueue.length > 0 && { color: COLORS.accent }]}>
+                {offlineQueue.length}
+              </Text>
+              <Text style={styles.queueLabel}>OUTBOX</Text>
+            </View>
           </View>
 
           <View style={styles.actionRow}>
             <TouchableOpacity
-              style={[styles.btnSync, isSyncing && styles.btnSyncDisabled]}
-              disabled={isSyncing}
+              style={[styles.btnSync, isAnySyncing && styles.btnSyncDisabled]}
+              disabled={isAnySyncing}
               onPress={handleManualSync}
             >
               <Text style={styles.btnSyncText}>
-                {isSyncing ? '[SYNCING...]' : '[SYNC NOW]'}
+                {isAnySyncing ? '[SYNCING...]' : '[SYNC NOW]'}
               </Text>
             </TouchableOpacity>
 

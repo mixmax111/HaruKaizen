@@ -8,6 +8,32 @@ datasource db {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum RecordOrigin {
+  USER
+  AI_DRAFT
+  AI_APPLIED
+}
+
+enum SetType {
+  WARMUP
+  WORKING
+  DROPSET
+  DROP
+  FAILURE
+}
+
+enum DocumentCategory {
+  BLOODWORK
+  MEDICAL_REPORT
+  COACH_PLAN
+  BIOMETRICS
+  OTHER
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // UTENTI & AUTENTICAZIONE
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -39,6 +65,10 @@ model User {
   workoutLogs        WorkoutLog[]
   dietPlans          DietPlan[]
   nutritionLogs      NutritionLog[]
+  createdFoodItems   FoodItem[]
+  mealSlots          MealSlot[]
+  recipes            Recipe[]
+  documents          UserDocument[]
 
   @@map("users")
 }
@@ -49,13 +79,34 @@ model UserSettings {
 
   // Chiave API LLM criptata in AES-256-GCM (mai in chiaro nel DB)
   llmApiKey            String?  @map("llm_api_key")
-  preferredLlmProvider String?  @map("preferred_llm_provider") // "openai" | "anthropic"
+  preferredLlmProvider String?  @default("gemini") @map("preferred_llm_provider") // "openai" | "anthropic" | "gemini" | "openrouter" | "local_custom"
+  preferredLlmModel    String?  @default("gemini-2.5-flash") @map("preferred_llm_model")
+  customLlmBaseUrl     String?  @map("custom_llm_base_url") // es. "http://192.168.1.50:11434/v1" per Ollama/LM Studio
   timezone             String   @default("Europe/Rome")
   locale               String   @default("it-IT")
   fcmPushToken         String?  @map("fcm_push_token")
   targetWeightKg       Float?   @map("target_weight_kg")
   coachTone            String   @default("KAIZEN") @map("coach_tone") // "RIGOROUS" | "EMPATHETIC" | "KAIZEN"
   isDarkMode           Boolean  @default(true) @map("is_dark_mode")
+
+  // Target Macro & Conta Calorie PURO
+  targetMode                String    @default("AUTO") @map("target_mode") // "AUTO" | "MANUAL"
+  targetCalories            Int?      @map("target_calories")
+  targetProteinG            Float?    @map("target_protein_g")
+  targetCarbsG              Float?    @map("target_carbs_g")
+  targetFatG                Float?    @map("target_fat_g")
+  targetFiberG              Float?    @map("target_fiber_g")
+  goalType                  String    @default("MAINTENANCE") @map("goal_type") // "CUT" | "MAINTENANCE" | "BULK"
+  deficitPct                Float     @default(15.0) @map("deficit_pct")        // Range: 10 - 25%
+  surplusPct                Float     @default(10.0) @map("surplus_pct")        // Range: 5 - 10%
+  proteinPerKg              Float     @default(2.0) @map("protein_per_kg")      // Range: 1.6 - 2.2 g/kg
+  fatPct                    Float     @default(25.0) @map("fat_pct")            // Range: 20 - 35% (min 0.6-0.8 g/kg)
+  calorieBalanceMode        String    @default("SIMPLE") @map("calorie_balance_mode") // "SIMPLE" | "ACTIVE"
+  burnedCalorieRecoveryPct  Float     @default(50.0) @map("burned_calorie_recovery_pct") // 0-100%
+  isPregnant                Boolean   @default(false) @map("is_pregnant")
+  isLactating               Boolean   @default(false) @map("is_lactating")
+  aiDailyRequestLimit       Int       @default(20) @map("ai_daily_request_limit")
+  clientUpdatedAt           DateTime? @map("client_updated_at")
 
   updatedAt            DateTime @updatedAt @map("updated_at")
 
@@ -70,6 +121,7 @@ model UserSettings {
 
 model Measurement {
   id                String    @id @default(uuid())
+  clientSideId      String?   @unique @map("client_side_id")
   userId            String    @map("user_id")
 
   weightKg          Float     @map("weight_kg")
@@ -131,37 +183,43 @@ model AiInsightReport {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Exercise {
-  id                 String    @id @default(uuid())
-  name               String
-  category           String    // ExerciseCategory enum: CHEST | BACK | LEGS | SHOULDERS | ARMS | CORE | CARDIO
-  equipment          String?
-  defaultMetValue    Float     @map("default_met_value")
-  createdByUserId    String?   @map("created_by_user_id")
-  isVerified         Boolean   @default(false) @map("is_verified")
+  id                  String    @id @default(uuid())
+  name                String
+  category            String    // ExerciseCategory enum: CHEST | BACK | LEGS | SHOULDERS | ARMS | CORE | CARDIO
+  equipment           String?
+  defaultMetValue     Float     @map("default_met_value")
+  createdByUserId     String?   @map("created_by_user_id")
+  isVerified          Boolean   @default(false) @map("is_verified")
 
-  createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
-  deletedAt          DateTime? @map("deleted_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
 
-  createdByUser      User?     @relation(fields: [createdByUserId], references: [id])
+  createdByUser       User?     @relation(fields: [createdByUserId], references: [id])
   workoutDayExercises WorkoutDayExercise[]
+  workoutLogExercises WorkoutLogExercise[]
 
   @@map("exercises")
 }
 
 model WorkoutPlan {
-  id          String    @id @default(uuid())
-  userId      String    @map("user_id")
-  name        String
-  isActive    Boolean   @default(true) @map("is_active")
-  isPublic    Boolean   @default(false) @map("is_public")
+  id              String       @id @default(uuid())
+  userId          String       @map("user_id")
+  name            String
+  origin          RecordOrigin @default(USER)
+  isAiIsolated    Boolean      @default(false) @map("is_ai_isolated")
+  aiReasoning     String?      @map("ai_reasoning") @db.Text
+  clinicalWarning String?      @map("clinical_warning") @db.Text
+  isActive        Boolean      @default(true) @map("is_active")
+  isPublic        Boolean      @default(false) @map("is_public")
 
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
 
-  user        User      @relation(fields: [userId], references: [id])
+  user        User          @relation(fields: [userId], references: [id])
   workoutDays WorkoutDay[]
+  workoutLogs WorkoutLog[]
 
   @@map("workout_plans")
 }
@@ -170,7 +228,8 @@ model WorkoutDay {
   id            String    @id @default(uuid())
   workoutPlanId String    @map("workout_plan_id")
   name          String
-  orderIndex    Int       @map("order_index")
+  orderIndex    Int       @default(1) @map("order_index")
+  dayOrder      Int?      @map("day_order")
 
   workoutPlan   WorkoutPlan        @relation(fields: [workoutPlanId], references: [id], onDelete: Cascade)
   exercises     WorkoutDayExercise[]
@@ -179,15 +238,17 @@ model WorkoutDay {
 }
 
 model WorkoutDayExercise {
-  id            String    @id @default(uuid())
-  workoutDayId  String    @map("workout_day_id")
-  exerciseId    String    @map("exercise_id")
-  orderIndex    Int       @map("order_index")
-  sets          Int
-  repsTarget    String    @map("reps_target")  // es. "8-12" o "AMRAP"
-  weightTarget  String?   @map("weight_target") // es. "80kg" o "RPE 8"
-  restSeconds   Int       @map("rest_seconds")
-  notes         String?
+  id             String    @id @default(uuid())
+  workoutDayId   String    @map("workout_day_id")
+  exerciseId     String    @map("exercise_id")
+  orderIndex     Int       @default(1) @map("order_index")
+  sets           Int
+  repsTarget     String    @map("reps_target")  // es. "8-12" o "AMRAP"
+  weightTarget   String?   @map("weight_target") // es. "80kg" o "RPE 8"
+  weightTargetKg Float?    @map("weight_target_kg")
+  rpeTarget      Int?      @map("rpe_target")
+  restSeconds    Int       @map("rest_seconds")
+  notes          String?
 
   workoutDay    WorkoutDay @relation(fields: [workoutDayId], references: [id], onDelete: Cascade)
   exercise      Exercise   @relation(fields: [exerciseId], references: [id])
@@ -197,19 +258,24 @@ model WorkoutDayExercise {
 
 model WorkoutLog {
   id               String    @id @default(uuid())
+  clientSideId     String?   @unique @map("client_side_id")
   userId           String    @map("user_id")
-  dayNameSnapshot  String    @map("day_name_snapshot") // Nome del giorno al momento dell'esecuzione
+  planId           String?   @map("plan_id")
+  date             DateTime  @default(now()) @map("date")
+  dayNameSnapshot  String    @default("Live Session") @map("day_name_snapshot") // Nome del giorno al momento dell'esecuzione
 
   startedAt        DateTime? @map("started_at")
   finishedAt       DateTime? @map("finished_at")
-  durationMinutes  Int?      @map("duration_minutes")
-  caloriesBurned   Float?    @map("calories_burned")
+  durationMinutes      Int?      @map("duration_minutes")
+  caloriesBurned       Float?    @map("calories_burned")
+  manualCaloriesBurned Float?    @map("manual_calories_burned") // Obbligatorio per minori o override utente
 
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
   deletedAt        DateTime? @map("deleted_at")
 
-  user             User      @relation(fields: [userId], references: [id])
+  user             User               @relation(fields: [userId], references: [id])
+  workoutPlan      WorkoutPlan?       @relation(fields: [planId], references: [id])
   logExercises     WorkoutLogExercise[]
 
   @@map("workout_logs")
@@ -218,11 +284,14 @@ model WorkoutLog {
 model WorkoutLogExercise {
   id                     String    @id @default(uuid())
   workoutLogId           String    @map("workout_log_id")
+  exerciseId             String?   @map("exercise_id")
   exerciseNameSnapshot   String    @map("exercise_name_snapshot") // Nome esercizio al momento del log
+  notes                  String?   @map("notes") @db.Text
+  isExtraExercise        Boolean   @default(false) @map("is_extra_exercise")
   isSkipped              Boolean   @default(false) @map("is_skipped")
-  notes                  String?
 
   workoutLog             WorkoutLog  @relation(fields: [workoutLogId], references: [id], onDelete: Cascade)
+  exercise               Exercise?   @relation(fields: [exerciseId], references: [id])
   logSets                WorkoutLogSet[]
 
   @@map("workout_log_exercises")
@@ -231,12 +300,14 @@ model WorkoutLogExercise {
 // Dati granulari per-set: necessari per calcolo progressive overload lato AI
 model WorkoutLogSet {
   id                    String   @id @default(uuid())
+  clientSideId          String?  @unique @map("client_side_id")
   workoutLogExerciseId  String   @map("workout_log_exercise_id")
-  orderIndex            Int      @map("order_index")    // Ordine della serie (1, 2, 3...)
-  setType               String   @map("set_type")       // "WORKING" | "WARMUP" | "DROP" | "FAILURE"
-  repsCompleted         Int?     @map("reps_completed") // null = serie a cedimento (AMRAP)
-  weightKg              Float?   @map("weight_kg")      // null = esercizio a corpo libero
-  rpe                   Float?                          // Rate of Perceived Exertion 1-10 (opzionale)
+  orderIndex            Int      @default(1) @map("order_index")    // Ordine della serie (1, 2, 3...)
+  setOrder              Int?     @map("set_order")
+  setType               SetType  @default(WORKING) @map("set_type") // WARMUP | WORKING | DROPSET | DROP | FAILURE
+  repsCompleted         Int?     @map("reps_completed")             // null = serie a cedimento (AMRAP)
+  weightKg              Float?   @map("weight_kg")                  // null = esercizio a corpo libero
+  rpe                   Float?                                      // Rate of Perceived Exertion 1-10 (opzionale)
   notes                 String?
 
   logExercise           WorkoutLogExercise @relation(fields: [workoutLogExerciseId], references: [id], onDelete: Cascade)
@@ -250,31 +321,115 @@ model WorkoutLogSet {
 
 model FoodItem {
   id             String    @id @default(uuid())
+  clientSideId   String?   @map("client_side_id")
+  userId         String?   @map("user_id") // null = globale provider; valorizzato se copia CoW o manual quick utente
   name           String
-  barcode        String?   @unique // Univoco per evitare duplicati da OpenFoodFacts
+  barcode        String?
   calories100g   Float     @map("calories_100g")
   protein100g    Float     @map("protein_100g")
   carbs100g      Float     @map("carbs_100g")
   fat100g        Float     @map("fat_100g")
   fiber100g      Float?    @map("fiber_100g")
   sodium100g     Float?    @map("sodium_100g")
+  servingSizeG   Float?    @map("serving_size_g") // Peso in grammi di 1 porzione (serving)
   isVerified     Boolean   @default(false) @map("is_verified")
+  isUserEdited   Boolean   @default(false) @map("is_user_edited") // True per copie CoW o correzioni utente
+  basedOnId      String?   @map("based_on_id")                   // ID dell'alimento globale originale per CoW
+  source         String    @default("LOCAL") @map("source")      // "LOCAL" | "OPEN_FOOD_FACTS" | "USDA" | "MANUAL_QUICK"
+  fetchedAt      DateTime? @map("fetched_at")
+  externalId     String?   @map("external_id")
 
+  clientUpdatedAt DateTime? @map("client_updated_at")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
 
-  dietDayItems   DietDayItem[]
-  nutritionLogs  NutritionLog[]
+  user              User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dietDayItems      DietDayItem[]
+  nutritionLogs     NutritionLog[]
+  recipeIngredients RecipeIngredient[]
 
+  @@unique([userId, clientSideId])
+  @@index([barcode])
+  @@index([userId, deletedAt])
+  @@index([basedOnId])
   @@map("food_items")
 }
 
+// Slot Pasto Dinamici per Utente
+model MealSlot {
+  id              String    @id @default(uuid())
+  clientSideId    String?   @map("client_side_id")
+  userId          String    @map("user_id")
+  name            String    // es. "Colazione", "Pranzo", "Cena", "Spuntini", "Pre-Workout"
+  slotOrder       Int       @default(0) @map("slot_order")
+  isActive        Boolean   @default(true) @map("is_active")
+  
+  clientUpdatedAt DateTime? @map("client_updated_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nutritionLogs NutritionLog[]
+
+  @@unique([userId, clientSideId])
+  @@index([userId, slotOrder])
+  @@index([userId, deletedAt])
+  @@map("meal_slots")
+}
+
+// Ricette Personalizzate
+model Recipe {
+  id              String    @id @default(uuid())
+  clientSideId    String?   @map("client_side_id")
+  userId          String    @map("user_id")
+  name            String
+  defaultServings Float     @default(1) @map("default_servings")
+  finishedWeightG Float?    @map("finished_weight_g") // Peso totale cotto/finito opzionale
+  notes           String?   @db.Text
+
+  clientUpdatedAt DateTime? @map("client_updated_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ingredients   RecipeIngredient[]
+  nutritionLogs NutritionLog[]
+
+  @@unique([userId, clientSideId])
+  @@index([userId, deletedAt])
+  @@map("recipes")
+}
+
+model RecipeIngredient {
+  id         String   @id @default(uuid())
+  recipeId   String   @map("recipe_id")
+  foodItemId String   @map("food_item_id")
+  quantity   Float    @map("quantity")
+  unit       String   @default("g") // "g" | "ml" | "serving" | "piece"
+
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  recipe   Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  foodItem FoodItem @relation(fields: [foodItemId], references: [id])
+
+  @@index([recipeId])
+  @@map("recipe_ingredients")
+}
+
 model DietPlan {
-  id          String    @id @default(uuid())
-  userId      String    @map("user_id")
-  name        String
-  isActive    Boolean   @default(true) @map("is_active")
-  isPublic    Boolean   @default(false) @map("is_public")
+  id              String       @id @default(uuid())
+  userId          String       @map("user_id")
+  name            String
+  origin          RecordOrigin @default(USER)
+  isAiIsolated    Boolean      @default(false) @map("is_ai_isolated")
+  aiReasoning     String?      @map("ai_reasoning") @db.Text
+  clinicalWarning String?      @map("clinical_warning") @db.Text
+  isActive        Boolean      @default(true) @map("is_active")
+  isPublic        Boolean      @default(false) @map("is_public")
 
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
@@ -313,27 +468,64 @@ model DietDayItem {
 }
 
 model NutritionLog {
-  id                String    @id @default(uuid())
-  userId            String    @map("user_id")
-  foodItemId        String?   @map("food_item_id")
+  id                  String    @id @default(uuid())
+  clientSideId        String?   @map("client_side_id")
+  userId              String    @map("user_id")
+  foodItemId          String?   @map("food_item_id")
+  mealSlotId          String?   @map("meal_slot_id")
+  recipeId            String?   @map("recipe_id")
 
-  loggedAt          DateTime  @map("logged_at")
-  mealType          String    @map("meal_type") // "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK"
-  customFoodName    String?   @map("custom_food_name") // Per alimenti non in DB
-  quantityG         Float     @map("quantity_g")
+  loggedAt            DateTime  @map("logged_at")
+  mealType            String    @map("meal_type") // Legacy fallback: "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK"
+  entryType           String    @default("FOOD_ITEM") @map("entry_type") // "FOOD_ITEM" | "RECIPE" | "QUICK_ADD"
+  customFoodName      String?   @map("custom_food_name") // Per alimenti non in DB o Quick Add
+  recipeNameSnapshot  String?   @map("recipe_name_snapshot")
+  quantityG           Float     @map("quantity_g")
 
   // Valori calcolati al momento del log (snapshot dei macro)
-  caloriesConsumed  Float     @map("calories_consumed")
-  proteinConsumed   Float?    @map("protein_consumed")
-  carbsConsumed     Float?    @map("carbs_consumed")
-  fatConsumed       Float?    @map("fat_consumed")
+  caloriesConsumed    Float     @map("calories_consumed")
+  proteinConsumed     Float?    @map("protein_consumed")
+  carbsConsumed       Float?    @map("carbs_consumed")
+  fatConsumed         Float?    @map("fat_consumed")
+  fiberConsumed       Float?    @map("fiber_consumed")
 
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  deletedAt         DateTime? @map("deleted_at")
+  clientUpdatedAt     DateTime? @map("client_updated_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
 
-  user              User      @relation(fields: [userId], references: [id])
-  foodItem          FoodItem? @relation(fields: [foodItemId], references: [id])
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  foodItem            FoodItem? @relation(fields: [foodItemId], references: [id], onDelete: SetNull)
+  mealSlot            MealSlot? @relation(fields: [mealSlotId], references: [id], onDelete: SetNull)
+  recipe              Recipe?   @relation(fields: [recipeId], references: [id], onDelete: SetNull)
 
+  @@unique([userId, clientSideId])
+  @@index([userId, loggedAt])
+  @@index([userId, deletedAt])
   @@map("nutrition_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOCUMENTI UTENTE & SEMI-RAG
+// ─────────────────────────────────────────────────────────────────────────────
+
+model UserDocument {
+  id                String           @id @default(uuid())
+  clientSideId      String?          @unique @map("client_side_id")
+  userId            String           @map("user_id")
+  title             String
+  category          DocumentCategory @default(OTHER)
+  originalFilename  String           @map("original_filename")
+  mimeType          String           @map("mime_type")
+  extractedMarkdown String           @map("extracted_markdown") @db.Text
+  tokenEstimate     Int              @default(0) @map("token_estimate")
+  isActiveInRag     Boolean          @default(true) @map("is_active_in_rag")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  deletedAt         DateTime?        @map("deleted_at")
+
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActiveInRag])
+  @@map("user_documents")
 }

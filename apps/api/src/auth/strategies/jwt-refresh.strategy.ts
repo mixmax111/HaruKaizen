@@ -13,7 +13,10 @@ export class JwtRefreshStrategy extends PassportStrategy(
   constructor(config: ConfigService) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
-        (req: Request) => req?.cookies?.['refresh_token'] as string | null,
+        (req: Request) => (req?.cookies?.['refresh_token'] as string) || null,
+        (req: Request) => (req?.headers?.['x-refresh-token'] as string) || null,
+        (req: Request) => (req?.body?.refreshToken as string) || null,
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
       ]),
       ignoreExpiration: false,
       secretOrKey: config.getOrThrow<string>('JWT_REFRESH_SECRET'),
@@ -22,7 +25,11 @@ export class JwtRefreshStrategy extends PassportStrategy(
   }
 
   validate(req: Request, payload: JwtPayload): JwtPayload & { refreshToken: string } {
-    const refreshToken = req.cookies?.['refresh_token'] as string | undefined;
+    const refreshToken =
+      (req.cookies?.['refresh_token'] as string | undefined) ||
+      (req.headers?.['x-refresh-token'] as string | undefined) ||
+      (req.body?.refreshToken as string | undefined) ||
+      (req.headers?.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : undefined);
     if (!refreshToken) {
       throw new UnauthorizedException('Refresh token mancante');
     }

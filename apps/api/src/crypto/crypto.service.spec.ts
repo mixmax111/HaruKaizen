@@ -23,7 +23,8 @@ describe('CryptoService', () => {
     const encrypted = service.encrypt(secret);
 
     expect(encrypted).not.toBe(secret);
-    expect(encrypted.split(':')).toHaveLength(3);
+    expect(encrypted.startsWith('v1:')).toBe(true);
+    expect(encrypted.split(':')).toHaveLength(4);
 
     const decrypted = service.decrypt(encrypted);
     expect(decrypted).toBe(secret);
@@ -33,7 +34,7 @@ describe('CryptoService', () => {
     const secret = 'super-secret';
     const encrypted = service.encrypt(secret);
     const parts = encrypted.split(':');
-    parts[2] = 'deadbeef' + parts[2].slice(8); // alter ciphertext
+    parts[3] = 'deadbeef' + parts[3].slice(8); // alter ciphertext
 
     expect(() => service.decrypt(parts.join(':'))).toThrow();
   });

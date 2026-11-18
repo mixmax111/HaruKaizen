@@ -1,7 +1,8 @@
-﻿'use client';
+'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { apiClient, setAccessToken } from '../lib/api';
+import axios from 'axios';
+import { apiClient, setAccessToken, getApiBaseUrl } from '../lib/api';
 import { useRouter } from 'next/navigation';
 
 interface User {
@@ -17,8 +18,9 @@ interface User {
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (token: string) => Promise<void>;
+  login: (token: string, redirect?: boolean) => Promise<void>;
   logout: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -26,6 +28,7 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   login: async () => {},
   logout: async () => {},
+  refreshProfile: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -45,28 +48,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    // Tenta refresh all'avvio
-    apiClient
-      .post('/auth/refresh')
+    // Tenta refresh all'avvio con axios crudo per non attivare gli interceptor di apiClient
+    const apiBase = getApiBaseUrl();
+    axios
+      .post(`${apiBase}/auth/refresh`, {}, { withCredentials: true })
       .then((res) => {
-        const token = res.data.data?.accessToken || res.data.accessToken;
-        setAccessToken(token);
-        return fetchProfile();
+        const token = res.data?.data?.accessToken || res.data?.accessToken;
+        if (token) {
+          setAccessToken(token);
+          return fetchProfile();
+        } else {
+          setUser(null);
+          setIsLoading(false);
+        }
       })
       .catch(() => {
+        // Normale quando l'utente è un visitatore anonimo o non ha una sessione attiva
+        setAccessToken(null);
+        setUser(null);
         setIsLoading(false);
       });
   }, []);
 
-  const login = async (token: string) => {
+  const login = async (token: string, redirect: boolean = true) => {
     setAccessToken(token);
     await fetchProfile();
-    router.push('/dashboard');
+    if (redirect) {
+      router.push('/dashboard');
+    }
   };
 
   const logout = async () => {
     try {
       await apiClient.post('/auth/logout');
+    } catch {
+      // Ignora errori di rete su logout
     } finally {
       setAccessToken(null);
       setUser(null);
@@ -75,7 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, refreshProfile: fetchProfile }}>
       {children}
     </AuthContext.Provider>
   );

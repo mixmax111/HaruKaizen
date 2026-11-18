@@ -1,4 +1,4 @@
-﻿// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // USER & AUTH
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -52,12 +52,37 @@ export enum SetType {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ORIGINE RECORD & ISOLAMENTO
+// ─────────────────────────────────────────────────────────────────────────────
+
+export enum RecordOrigin {
+  USER       = 'USER',
+  AI_DRAFT   = 'AI_DRAFT',
+  AI_APPLIED = 'AI_APPLIED',
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOCUMENTI UTENTE (SEMI-RAG)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export enum DocumentCategory {
+  BLOODWORK      = 'BLOODWORK',
+  MEDICAL_REPORT = 'MEDICAL_REPORT',
+  COACH_PLAN     = 'COACH_PLAN',
+  BIOMETRICS     = 'BIOMETRICS',
+  OTHER          = 'OTHER',
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // AI
 // ─────────────────────────────────────────────────────────────────────────────
 
 export enum LlmProvider {
-  OPENAI    = 'openai',
-  ANTHROPIC = 'anthropic',
+  GEMINI       = 'gemini',
+  OPENAI       = 'openai',
+  ANTHROPIC    = 'anthropic',
+  OPENROUTER   = 'openrouter',
+  LOCAL_CUSTOM = 'local_custom',
 }
 
 export enum ReportType {

@@ -14,6 +14,9 @@ import { NutritionModule } from './nutrition/nutrition.module.js';
 import { WorkoutModule } from './workout/workout.module.js';
 import { AiModule } from './ai/ai.module.js';
 import { MediaModule } from './media/media.module.js';
+import { DocumentsModule } from './documents/documents.module.js';
+import { PortabilityModule } from './portability/portability.module.js';
+import { SyncModule } from './sync/sync.module.js';
 import { HealthModule } from './common/health/health.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 
@@ -45,6 +48,13 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 
     // ── Sprint 5 — Media & Progress Tracking ──────────────────────────
     MediaModule,
+
+    // ── Engineering Spec A — Documents (Semi-RAG) ─────────────────────
+    DocumentsModule,
+
+    // ── Engineering Spec B — Data Portability & Offline Sync ──────────
+    PortabilityModule,
+    SyncModule,
   ],
   controllers: [AppController],
   providers: [

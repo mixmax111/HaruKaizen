@@ -1,10 +1,10 @@
-﻿import { Controller, Get, Post, Body, Param, Query, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, ParseUUIDPipe } from '@nestjs/common';
 import { ExercisesService } from './exercises.service.js';
 import { CreateExerciseDto } from './dto/create-exercise.dto.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../../auth/strategies/jwt.strategy.js';
 
-@Controller('exercises')
+@Controller(['exercises', 'workout/exercises'])
 export class ExercisesController {
   constructor(private readonly exercisesService: ExercisesService) {}
 

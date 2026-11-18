@@ -1,46 +1,115 @@
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+
+export const CUSTOM_API_URL_KEY = '@harukaizen:custom_api_url';
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
  * 🌐 Risoluzione Intelligente dell'URL Backend (HaruKaizen Local-Edition)
  * ─────────────────────────────────────────────────────────────────────────────
- * 1. PRIORITÀ ASSOLUTA — Variabile d'ambiente:
- *    EXPO_PUBLIC_API_URL definita in `apps/mobile/.env` (es. "http://192.168.1.150:8080/api/v1").
- * 
- * 2. SVILUPPO SU RETE LOCALE (Expo Go / Metro Bundler):
- *    Se la variabile non è impostata, estrae automaticamente l'IP locale del PC
- *    dalla connessione Metro attiva (Constants.expoConfig.hostUri).
- * 
- * 3. EMULATORE / FALLBACK:
- *    - Android Emulator: http://10.0.2.2:8080/api/v1 (porta 8080 per Local Docker Compose)
- *    - iOS Simulator / Web: http://localhost:8080/api/v1
- * 
- * 👉 OVERRIDE MANUALE PER AMBIENTI AIR-GAPPED:
- *    Se vuoi forzare un IP fisso senza variabili d'ambiente, decommenta la riga sotto:
- *    // return 'http://192.168.1.150:8080/api/v1';
+ * Sull'host Windows la porta 8080 è occupata da servizi di sistema (pgagent.exe);
+ * HaruKaizen espone hk-api-local sulla porta 8002 dell'host Docker.
+ * Su smartphone fisici con Expo Go, l'IP LAN viene estratto dinamicamente da hostUri.
  */
-function resolveApiBaseUrl(): string {
-  // 1. Variabile d'ambiente esplicita (.env o eas.json)
-  const envUrl = process.env.EXPO_PUBLIC_API_URL;
-  if (envUrl && envUrl.trim() !== '') {
-    return envUrl;
+function extractLanHostIp(): string | null {
+  // Prova 1: hostUri da expoConfig
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    const rawIp = hostUri.split(':')[0];
+    if (rawIp && rawIp !== 'localhost' && rawIp !== '127.0.0.1') return rawIp;
   }
 
-  // 2. Rilevamento automatico IP host LAN da Expo Metro Bundler
-  const hostUri = Constants.expoConfig?.hostUri;
-  if (__DEV__ && hostUri) {
-    const ip = hostUri.split(':')[0];
-    if (ip) {
-      // In Local-Edition l'API su Docker Compose risponde su porta 8002
-      return `http://${ip}:8002/api/v1`;
+  // Prova 2: linkingUri o experienceUrl (es. exp://192.168.1.6:8081)
+  const uri = Constants.linkingUri || (Constants as any).experienceUrl;
+  if (uri && typeof uri === 'string') {
+    const match = uri.match(/:\/\/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+    if (match && match[1] && match[1] !== '127.0.0.1') {
+      return match[1];
     }
   }
 
-  // 3. Fallback standard per emulatore Android
-  return 'http://10.0.2.2:8002/api/v1';
+  return '192.168.1.6';
 }
 
-export const API_BASE_URL = resolveApiBaseUrl();
+function resolveDefaultApiBaseUrl(): string {
+  const lanHostIp = extractLanHostIp();
+
+  // 1. Variabile d'ambiente esplicita (.env o eas.json)
+  const envUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (envUrl && envUrl !== '') {
+    // Se l'env punta a localhost ma siamo su un dispositivo fisico con IP LAN rilevato, usa l'IP LAN
+    if (lanHostIp && (envUrl.includes('localhost') || envUrl.includes('127.0.0.1'))) {
+      return envUrl
+        .replace('localhost', lanHostIp)
+        .replace('127.0.0.1', lanHostIp)
+        .replace(':8080', ':8002');
+    }
+    // Normalizza sempre la porta 8080 su 8002 per evitare collisioni sull'host Docker
+    return envUrl.replace(':8080', ':8002');
+  }
+
+  // 2. Se abbiamo un IP LAN rilevato da Metro o default LAN, usa direttamente porta 8002
+  if (lanHostIp) {
+    return `http://${lanHostIp}:8002/api/v1`;
+  }
+
+  // 3. Fallback per emulatore Android (10.0.2.2) o iOS/Web (localhost)
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:8002/api/v1';
+  }
+
+  return 'http://localhost:8002/api/v1';
+}
+
+export let API_BASE_URL = resolveDefaultApiBaseUrl();
+
+/**
+ * Inizializza l'endpoint dinamico da AsyncStorage (fondamentale per APK standalone)
+ */
+export async function initApiBaseUrl(): Promise<string> {
+  try {
+    const custom = await AsyncStorage.getItem(CUSTOM_API_URL_KEY);
+    if (custom && custom.trim() !== '') {
+      let cleaned = custom.trim().replace(':8080', ':8002');
+      if (cleaned.includes('localhost') || cleaned.includes('127.0.0.1')) {
+        const lanIp = extractLanHostIp();
+        if (lanIp) {
+          cleaned = cleaned.replace('localhost', lanIp).replace('127.0.0.1', lanIp);
+        }
+      }
+      API_BASE_URL = cleaned;
+      return API_BASE_URL;
+    }
+  } catch (err) {
+    console.warn('[Config] Errore lettura custom API URL:', err);
+  }
+  API_BASE_URL = resolveDefaultApiBaseUrl();
+  return API_BASE_URL;
+}
+
+/**
+ * Imposta un endpoint custom (es. http://192.168.1.100:8002/api/v1)
+ */
+export async function setDynamicApiBaseUrl(url: string): Promise<string> {
+  let cleaned = url.trim().replace(/\/+$/, '');
+  if (!cleaned.endsWith('/api/v1') && !cleaned.includes('/api/')) {
+    cleaned = `${cleaned}/api/v1`;
+  }
+
+  API_BASE_URL = cleaned;
+  await AsyncStorage.setItem(CUSTOM_API_URL_KEY, cleaned);
+  return cleaned;
+}
+
+/**
+ * Ripristina l'endpoint di default
+ */
+export async function resetDynamicApiBaseUrl(): Promise<string> {
+  await AsyncStorage.removeItem(CUSTOM_API_URL_KEY);
+  API_BASE_URL = resolveDefaultApiBaseUrl();
+  return API_BASE_URL;
+}
 
 export const COLORS = {
   background: '#0d0e15',       // Deepest Dark Surface

@@ -13,13 +13,11 @@ async function main() {
   console.log('🌱 [Seed] Avvio popolamento database idempotente HaruKaizen...');
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 1. ACCOUNT BASE (Admin, Coach, User) — Rigorosamente con upsert
+  // 1. ACCOUNT ADMIN BASE — Rigorosamente con upsert
   // ─────────────────────────────────────────────────────────────────────────────
   const adminPassword = await bcrypt.hash('AdminSecurePass2026!', 10);
-  const coachPassword = await bcrypt.hash('CoachKaizen2026!', 10);
-  const userPassword  = await bcrypt.hash('UserKaizen2026!', 10);
 
-  // Admin
+  // Admin Account (Unico utente di sistema pre-configurato)
   const admin = await prisma.user.upsert({
     where:  { email: 'admin@harukaizen.local' },
     update: {
@@ -32,42 +30,14 @@ async function main() {
       authProvider: 'LOCAL',
       role:         'ADMIN',
       heightCm:     180,
-      birthDate:    new Date('1988-03-25'),
+      birthDate:    new Date('1990-01-01'),
       sex:          'M',
       lifestyleMultiplier: 1.55,
       userSettings: {
         create: {
           timezone:       'Europe/Rome',
           locale:         'it-IT',
-          targetWeightKg: 82,
-          coachTone:      'RIGOROUS',
-          isDarkMode:     true,
-        },
-      },
-    },
-  });
-
-  // Coach
-  const coach = await prisma.user.upsert({
-    where:  { email: 'coach@harukaizen.local' },
-    update: {
-      role: 'USER',
-      passwordHash: coachPassword,
-    },
-    create: {
-      email:        'coach@harukaizen.local',
-      passwordHash: coachPassword,
-      authProvider: 'LOCAL',
-      role:         'USER',
-      heightCm:     182,
-      birthDate:    new Date('1992-07-10'),
-      sex:          'M',
-      lifestyleMultiplier: 1.725,
-      userSettings: {
-        create: {
-          timezone:       'Europe/Rome',
-          locale:         'it-IT',
-          targetWeightKg: 85,
+          targetWeightKg: 80,
           coachTone:      'KAIZEN',
           isDarkMode:     true,
         },
@@ -75,35 +45,7 @@ async function main() {
     },
   });
 
-  // User Standard
-  const user = await prisma.user.upsert({
-    where:  { email: 'user@harukaizen.local' },
-    update: {
-      role: 'USER',
-      passwordHash: userPassword,
-    },
-    create: {
-      email:        'user@harukaizen.local',
-      passwordHash: userPassword,
-      authProvider: 'LOCAL',
-      role:         'USER',
-      heightCm:     178,
-      birthDate:    new Date('1996-11-14'),
-      sex:          'M',
-      lifestyleMultiplier: 1.375,
-      userSettings: {
-        create: {
-          timezone:       'Europe/Rome',
-          locale:         'it-IT',
-          targetWeightKg: 75,
-          coachTone:      'EMPATHETIC',
-          isDarkMode:     true,
-        },
-      },
-    },
-  });
-
-  console.log(`✅ [Seed] Account verificati: Admin (${admin.email}), Coach (${coach.email}), User (${user.email})`);
+  console.log(`✅ [Seed] Account amministratore verificato: Admin (${admin.email})`);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 2. CATALOGO ESERCIZI (50+ Esercizi essenziali suddivisi per biomeccanica)

@@ -16,6 +16,9 @@ import { KaizenInsightCard } from '../../components/telemetry/kaizen-insight-car
 import { WorkoutHistoryList, WorkoutSessionItem } from '../../components/telemetry/workout-history-list';
 import { FastCaptureCard } from '../../components/telemetry/fast-capture-card';
 import { HardwareDiagnosticsRibbon } from '../../components/telemetry/hardware-diagnostics-ribbon';
+import { CsvPortabilityModal } from '../../components/portability/CsvPortabilityModal';
+import { ProfileSettingsModal } from '../../components/profile/ProfileSettingsModal';
+import { AdvancedFastCaptureModal } from '../../components/nutrition/AdvancedFastCaptureModal';
 import {
   Flame,
   TrendingUp,
@@ -27,40 +30,49 @@ import {
 
 export default function DashboardPage() {
   const [fastCaptureMessage, setFastCaptureMessage] = useState<string | null>(null);
+  const [isPortabilityModalOpen, setIsPortabilityModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isFastCaptureModalOpen, setIsFastCaptureModalOpen] = useState(false);
 
   // TanStack React Query Hooks connecting to live NestJS REST API
-  const { data: nutritionData, isLoading: isNutritionLoading } = useTelemetryNutrition();
-  const { data: measurementsData, isLoading: isMeasurementsLoading } = useTelemetryMeasurements();
-  const { data: workoutsData, isLoading: isWorkoutsLoading } = useTelemetryWorkouts();
+  const { data: nutritionData } = useTelemetryNutrition();
+  const { data: measurementsData } = useTelemetryMeasurements();
+  const { data: workoutsData } = useTelemetryWorkouts();
   const { data: insightsData } = useTelemetryAiInsights();
 
   const handleCommitFastCapture = (value: string) => {
-    setFastCaptureMessage(`Committed: ${value}`);
-    setTimeout(() => setFastCaptureMessage(null), 3000);
+    setFastCaptureMessage(`Registrato con successo: ${value}`);
+    setTimeout(() => setFastCaptureMessage(null), 3500);
   };
 
-  // 1. Energetics & Caloric Equilibrium
-  const caloriesConsumed = nutritionData?.totalCalories ?? 2450;
-  const caloriesTarget = nutritionData?.calorieTarget ?? 2800;
-  const caloriePercent = Math.min(100, Math.round((caloriesConsumed / caloriesTarget) * 100));
+  // 1. Energetics & Caloric Equilibrium (Live or Zero)
+  const caloriesConsumed = nutritionData?.totalCalories ?? 0;
+  const caloriesTarget = nutritionData?.calorieTarget ?? 2200;
+  const caloriePercent =
+    caloriesTarget > 0
+      ? Math.min(100, Math.round((caloriesConsumed / caloriesTarget) * 100))
+      : 0;
 
-  // 2. Body Mass Metric
-  const latestWeight =
-    measurementsData && measurementsData.length > 0
-      ? Number(measurementsData[0].weightKg)
-      : 76.4;
+  // 2. Body Mass Metric (Pure dynamic from live telemetry)
+  const hasMeasurements = Boolean(measurementsData && measurementsData.length > 0);
+  const latestWeight = hasMeasurements
+    ? Number(measurementsData![0].weightKg)
+    : null;
 
   const startingWeight =
     measurementsData && measurementsData.length > 1
       ? Number(measurementsData[measurementsData.length - 1].weightKg)
-      : 78.2;
+      : latestWeight;
 
-  const netMassLoss = (latestWeight - startingWeight).toFixed(2);
+  const netMassLoss =
+    latestWeight !== null && startingWeight !== null
+      ? (latestWeight - startingWeight).toFixed(2)
+      : '0.00';
 
-  // 3. Workouts Sessions Formatting
+  // 3. Workouts Sessions Formatting (Purged mock data)
   const formattedWorkouts: WorkoutSessionItem[] =
     workoutsData && workoutsData.length > 0
-      ? workoutsData.slice(0, 3).map((w, idx) => ({
+      ? workoutsData.slice(0, 5).map((w, idx) => ({
           id: w.id || `w-${idx}`,
           name: w.name || `Sessione #${idx + 1}`,
           badge: {
@@ -71,69 +83,26 @@ export default function DashboardPage() {
               : 'bg-secondary-container text-on-secondary-container',
           },
           metrics: [
-            `${w.durationMinutes || 60} min`,
-            `${w.caloriesBurned || 450} kcal`,
-            `${w.totalSets || 18} total sets`,
+            `${w.durationMinutes || 0} min`,
+            `${w.caloriesBurned || 0} kcal`,
+            `${w.totalSets || 0} total sets`,
           ],
           topAchievement: {
             icon: 'check',
-            text: w.topSetDescription || w.notes || 'Carico nominale completato',
+            text: w.topSetDescription || w.notes || 'Sessione completata',
           },
         }))
-      : [
-          {
-            id: 'w1',
-            name: 'Upper Body Hypertrophy',
-            badge: {
-              text: 'PR',
-              isPR: true,
-              className: 'bg-primary-container text-on-primary-container',
-            },
-            metrics: ['68 min', '482 kcal', '18 total sets'],
-            topAchievement: {
-              icon: 'check',
-              text: 'Incline Dumbbell Press: 36kg × 8 reps',
-            },
-          },
-          {
-            id: 'w2',
-            name: 'Zone 2 Aerobic Base',
-            badge: {
-              text: 'Cardio',
-              isPR: false,
-              className: 'bg-secondary-container text-on-secondary-container',
-            },
-            metrics: ['45 min', '390 kcal', 'Avg HR: 134 bpm'],
-            topAchievement: {
-              icon: 'heart',
-              text: 'Concept2 Rower: 9,450m split 2:03',
-            },
-          },
-          {
-            id: 'w3',
-            name: 'Legs & Core Overload',
-            badge: {
-              text: 'PR',
-              isPR: true,
-              className: 'bg-primary-container text-on-primary-container',
-            },
-            metrics: ['75 min', '560 kcal', '22 sets'],
-            topAchievement: {
-              icon: 'check',
-              text: 'Barbell Back Squat: 140kg × 5 reps',
-            },
-          },
-        ];
+      : [];
 
-  // 4. Macro Partitioning
-  const proteinCurrent = nutritionData?.totalProtein ?? 185;
-  const proteinGoal = nutritionData?.proteinTarget ?? 200;
-  const carbsCurrent = nutritionData?.totalCarbs ?? 230;
-  const carbsGoal = nutritionData?.carbsTarget ?? 250;
-  const fatCurrent = nutritionData?.totalFat ?? 58;
-  const fatGoal = nutritionData?.fatTarget ?? 65;
+  // 4. Macro Partitioning (Live or Zero)
+  const proteinCurrent = nutritionData?.totalProtein ?? 0;
+  const proteinGoal = nutritionData?.proteinTarget ?? 160;
+  const carbsCurrent = nutritionData?.totalCarbs ?? 0;
+  const carbsGoal = nutritionData?.carbsTarget ?? 220;
+  const fatCurrent = nutritionData?.totalFat ?? 0;
+  const fatGoal = nutritionData?.fatTarget ?? 60;
 
-  // 5. AI Insight
+  // 5. AI Insight (Live or Contextual Default)
   const latestInsight = insightsData && insightsData.length > 0 ? insightsData[0] : null;
 
   return (
@@ -141,20 +110,20 @@ export default function DashboardPage() {
       <div className="flex flex-col w-full gap-space-lg pb-space-2xl">
         {/* Fast Capture Notification Banner if committed */}
         {fastCaptureMessage && (
-          <div className="bg-primary/10 border border-primary/30 text-primary text-xs px-4 py-2 rounded-lg font-mono flex items-center justify-between">
-            <span>&gt; TELEMETRY_COMMITTED: {fastCaptureMessage}</span>
-            <span className="text-[10px] text-outline">SYNCED_TO_WAL</span>
+          <div className="bg-primary/10 border border-primary/30 text-primary text-xs px-4 py-2 rounded-lg font-sans flex items-center justify-between animate-in fade-in">
+            <span className="flex items-center gap-1.5 font-medium">
+              <span className="text-primary font-bold">✓</span>
+              <span>{fastCaptureMessage}</span>
+            </span>
+            <span className="font-mono text-[11px] text-primary/80">Sincronizzato</span>
           </div>
         )}
 
         {/* 1. Top Level Command & Status Ribbon */}
         <TelemetryRibbon
-          daemonStatus="DAEMON ONLINE"
-          version="v2.4.1-local-wal"
-          nodeAddress="127.0.0.1:8080"
-          onExport={() => alert('Esportazione database SQLite / CSV completata.')}
-          onSync={() => alert('Sincronizzazione HealthKit completata.')}
-          onLogActivity={() => alert('Apertura sessione di log rapido.')}
+          onExport={() => setIsPortabilityModalOpen(true)}
+          onSync={() => setIsPortabilityModalOpen(true)}
+          onLogActivity={() => setIsFastCaptureModalOpen(true)}
         />
 
         {/* 2. KPI Grid (4 High-Density Instrumentation Tiles) */}
@@ -166,7 +135,13 @@ export default function DashboardPage() {
             iconColorClass="text-primary"
             value={caloriesConsumed.toLocaleString()}
             valueUnit={`/ ${caloriesTarget.toLocaleString()} kcal`}
-            trendText="+140 kcal vs projected burn"
+            trendText={
+              caloriesConsumed > 0
+                ? `${caloriesConsumed >= caloriesTarget ? '+' : ''}${
+                    caloriesConsumed - caloriesTarget
+                  } kcal vs target`
+                : 'Nessun log per oggi'
+            }
             trendIcon={TrendingUp}
             trendColorClass="text-primary"
             circularGauge={{
@@ -176,8 +151,12 @@ export default function DashboardPage() {
               percentage: caloriePercent,
               colorClass: 'bg-primary',
             }}
-            footerLeft="Maintenance: 2,710"
-            footerRight={<span className="text-primary">Deficit: -350 kcal</span>}
+            footerLeft={`Target: ${caloriesTarget} kcal`}
+            footerRight={
+              <span className="text-primary font-medium">
+                {caloriePercent}% completato
+              </span>
+            }
           />
 
           {/* Tile 2: Training Microcycle */}
@@ -187,19 +166,28 @@ export default function DashboardPage() {
             iconColorClass="text-secondary"
             value={
               workoutsData && workoutsData.length > 0
-                ? `${workoutsData.length} / 6`
-                : '5 / 6'
+                ? String(workoutsData.length)
+                : '0'
             }
-            subtitle="sessions this cycle"
-            trendText="Chest & Delts Hypertrophy (Today)"
+            valueUnit="/ 5 sessioni"
+            subtitle="Microciclo settimanale"
+            trendText={
+              workoutsData && workoutsData.length > 0
+                ? 'Sessioni completate'
+                : 'Nessuna sessione ancora'
+            }
             trendColorClass="text-on-surface-variant"
-            statusBadge={{
-              text: 'Streak: 18 days',
-              icon: Flame,
-              bgClass: 'bg-surface-container',
-              colorClass: 'text-tertiary',
-            }}
-            footerRight="83% load target"
+            statusBadge={
+              workoutsData && workoutsData.length > 0
+                ? {
+                    text: 'In Corso',
+                    icon: Flame,
+                    bgClass: 'bg-surface-container',
+                    colorClass: 'text-tertiary',
+                  }
+                : undefined
+            }
+            footerRight="Target microciclo"
           />
 
           {/* Tile 3: Body Mass Metric */}
@@ -207,18 +195,29 @@ export default function DashboardPage() {
             title="Body Mass Metric"
             icon={Scale}
             iconColorClass="text-primary"
-            value={latestWeight.toFixed(1)}
-            valueUnit="kg"
-            trendText={`${Number(netMassLoss) <= 0 ? '' : '+'}${netMassLoss} kg 30d`}
+            value={latestWeight !== null ? latestWeight.toFixed(1) : '--'}
+            valueUnit={latestWeight !== null ? 'kg' : ''}
+            trendText={
+              latestWeight !== null
+                ? `${Number(netMassLoss) <= 0 ? '' : '+'}${netMassLoss} kg traiettoria`
+                : 'Registra la prima pesata'
+            }
             trendIcon={ArrowDown}
             trendColorClass="text-primary"
-            subtitle={`7-Day Rolling Avg: ${(latestWeight + 0.2).toFixed(1)} kg`}
-            statusBadge={{
-              text: 'Optimal Cut Velocity',
-              bgClass: 'bg-surface-container',
-              colorClass: 'text-primary',
-            }}
-            footerRight="-0.32 kg/wk"
+            subtitle={
+              latestWeight !== null
+                ? `Ultimo rilevamento: ${latestWeight.toFixed(1)} kg`
+                : 'Nessuna misurazione'
+            }
+            footerRight={
+              <button
+                type="button"
+                onClick={() => setIsProfileModalOpen(true)}
+                className="text-[11px] text-primary hover:underline font-sans cursor-pointer font-medium"
+              >
+                + Aggiorna peso
+              </button>
+            }
           />
 
           {/* Tile 4: CNS Readiness Index */}
@@ -226,15 +225,15 @@ export default function DashboardPage() {
             title="CNS Readiness Index"
             icon={Moon}
             iconColorClass="text-secondary"
-            value="92%"
-            valueUnit="HRV 68ms"
-            subtitle="Sleep: 8h 12m • RHR: 51 bpm"
+            value="94%"
+            valueUnit="Readiness"
+            subtitle="Recupero neurale ottimale • HRV 68ms"
             statusBadge={{
-              text: 'Peak Hypertrophy State',
-              bgClass: 'bg-secondary-container',
-              colorClass: 'text-on-secondary-container',
+              text: 'Peak State',
+              bgClass: 'bg-secondary/15',
+              colorClass: 'text-secondary',
             }}
-            footerRight="SpO2: 98%"
+            footerRight="Sonno: 8h 12m"
           />
         </div>
 
@@ -242,30 +241,10 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-lg">
           {/* Left Column: 8 Cols on Desktop */}
           <div className="lg:col-span-8 flex flex-col gap-space-lg">
-            {/* Trajectory Convergence Graph Panel */}
+            {/* Trajectory Convergence Graph Panel with live measurements */}
             <ChartWidget
-              summaryMetrics={[
-                {
-                  label: 'Starting Mass',
-                  value: `${startingWeight.toFixed(1)} kg`,
-                  subtext: 'Sep 27, 2024',
-                },
-                {
-                  label: 'Period Nadir',
-                  value: `${(latestWeight - 0.2).toFixed(1)} kg`,
-                  subtext: '48h post-refeed',
-                },
-                {
-                  label: 'Net Mass Loss',
-                  value: `${netMassLoss} kg`,
-                  subtext: '-2.30% total body',
-                },
-                {
-                  label: 'Projected Goal',
-                  value: '74.5 kg',
-                  subtext: 'Nov 18 (~24 Days)',
-                },
-              ]}
+              measurements={measurementsData || []}
+              onLogWeight={() => setIsProfileModalOpen(true)}
             />
 
             {/* Nutritional Macro Partitioning Strip */}
@@ -276,7 +255,7 @@ export default function DashboardPage() {
                   calPerG: '4 kcal/g',
                   currentG: proteinCurrent,
                   targetG: proteinGoal,
-                  percentage: (proteinCurrent / proteinGoal) * 100,
+                  percentage: proteinGoal > 0 ? (proteinCurrent / proteinGoal) * 100 : 0,
                   totalKcal: proteinCurrent * 4,
                   remainingG: Math.max(0, proteinGoal - proteinCurrent),
                   colorClass: 'text-primary',
@@ -287,7 +266,7 @@ export default function DashboardPage() {
                   calPerG: '4 kcal/g',
                   currentG: carbsCurrent,
                   targetG: carbsGoal,
-                  percentage: (carbsCurrent / carbsGoal) * 100,
+                  percentage: carbsGoal > 0 ? (carbsCurrent / carbsGoal) * 100 : 0,
                   totalKcal: carbsCurrent * 4,
                   remainingG: Math.max(0, carbsGoal - carbsCurrent),
                   colorClass: 'text-secondary',
@@ -298,14 +277,14 @@ export default function DashboardPage() {
                   calPerG: '9 kcal/g',
                   currentG: fatCurrent,
                   targetG: fatGoal,
-                  percentage: (fatCurrent / fatGoal) * 100,
+                  percentage: fatGoal > 0 ? (fatCurrent / fatGoal) * 100 : 0,
                   totalKcal: fatCurrent * 9,
                   remainingG: Math.max(0, fatGoal - fatCurrent),
                   colorClass: 'text-tertiary',
                   barBgClass: 'bg-tertiary',
                 },
               ]}
-              onLogMeal={() => alert('Apertura dialog registrazione pasto.')}
+              onLogMeal={() => setIsFastCaptureModalOpen(true)}
             />
           </div>
 
@@ -313,31 +292,50 @@ export default function DashboardPage() {
           <div className="lg:col-span-4 flex flex-col gap-space-lg">
             {/* AI Automated Insight with Live Data or Fallback */}
             <KaizenInsightCard
-              title={latestInsight?.title || 'Metabolic Adaptation Identified'}
+              title={latestInsight?.title || 'Adattamento Metabolico Rilevato'}
               summary={
                 latestInsight?.summary ||
-                'Your CNS recovery and sleep architecture are currently in the 94th percentile. Fatigue markers remain suppressed despite high density training.'
+                'Il recupero del sistema nervoso centrale e i parametri di riposo sono nella media ottimale. I marcatori di affaticamento rimangono stabili.'
               }
               prescription={
                 latestInsight?.prescription ||
-                "Increase carbohydrate intake by +35g (140 kcal) prior to tomorrow morning's posterior chain overload to maximize power output without breaking weekly deficit."
+                "Incrementa l'apporto di carboidrati (+35g) prima del prossimo allenamento per massimizzare la prestazione senza eccedere il target calorico."
               }
-              onApply={() => alert('+35g Refeed applicato al fabbisogno di domani!')}
+              onApply={() => alert('Raccomandazione applicata al piano!')}
               onDismiss={() => alert('Insight archiviato.')}
             />
 
-            {/* Workout History connected to TanStack Query */}
+            {/* Workout History connected to TanStack Query (no mock items) */}
             <WorkoutHistoryList workouts={formattedWorkouts} />
 
-            {/* Fast Capture Card */}
-            <FastCaptureCard onCommit={handleCommitFastCapture} />
+            {/* Fast Capture Card opening modal */}
+            <FastCaptureCard onCommit={() => setIsFastCaptureModalOpen(true)} />
           </div>
         </div>
 
         {/* 4. Bottom Hardware & Telemetry Diagnostics Ribbon */}
         <HardwareDiagnosticsRibbon />
+
+        {/* 5. Universal CSV & XLSX Portability Modal */}
+        <CsvPortabilityModal
+          isOpen={isPortabilityModalOpen}
+          onClose={() => setIsPortabilityModalOpen(false)}
+        />
+
+        {/* 6. Profile Settings & Weight Modal */}
+        <ProfileSettingsModal
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+          initialWeight={latestWeight || undefined}
+        />
+
+        {/* 7. Advanced Fast Capture & Recipes Modal */}
+        <AdvancedFastCaptureModal
+          isOpen={isFastCaptureModalOpen}
+          onClose={() => setIsFastCaptureModalOpen(false)}
+          onSuccess={handleCommitFastCapture}
+        />
       </div>
     </AppLayout>
   );
 }
-

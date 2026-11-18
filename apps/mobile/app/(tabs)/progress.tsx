@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { COLORS } from '../../src/config';
-import { GhostingCamera } from '../../src/components/GhostingCamera';
+import { GhostingCameraModal } from '../../src/components/progress/GhostingCameraModal';
 import { useSyncStore } from '../../src/stores/syncStore';
 import { hapticFeedback } from '../../src/utils/haptics';
 
@@ -147,10 +147,23 @@ export default function ProgressScreen() {
 
       {/* Modal Fotocamera Ghosting */}
       <Modal visible={isCameraOpen} animationType="slide">
-        <GhostingCamera
-          previousPhotoUri={latestGhostPhotoUri}
+        <GhostingCameraModal
+          isOpen={isCameraOpen}
+          previousPhotoUrl={latestGhostPhotoUri}
           category={selectedCategory}
-          onPhotoCaptured={handlePhotoCaptured}
+          onPhotoUploaded={(newPhoto) => {
+            setPhotosList((prev) => [
+              {
+                id: newPhoto.id,
+                uri: newPhoto.uri,
+                date: newPhoto.date,
+                category: newPhoto.category,
+                isLocalOnly: false,
+              },
+              ...prev,
+            ]);
+            setIsCameraOpen(false);
+          }}
           onClose={() => setIsCameraOpen(false)}
         />
       </Modal>

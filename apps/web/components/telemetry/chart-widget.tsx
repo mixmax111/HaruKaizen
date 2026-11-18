@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Scale, Plus, TrendingDown, TrendingUp } from 'lucide-react';
+import type { BodyMeasurement } from '../../lib/queries/telemetry';
 
 interface MetricStripItem {
   label: string;
@@ -14,6 +16,8 @@ interface ChartWidgetProps {
   subtitle?: string;
   activeMetric?: string;
   activeRange?: string;
+  measurements?: BodyMeasurement[];
+  onLogWeight?: () => void;
   summaryMetrics?: MetricStripItem[];
 }
 
@@ -22,22 +26,103 @@ export function ChartWidget({
   subtitle = 'Longitudinal Trajectory',
   activeMetric = 'Weight (kg)',
   activeRange = '30D',
-  summaryMetrics = [
-    { label: 'Starting Mass', value: '78.2 kg', subtext: 'Sep 27, 2024' },
-    { label: 'Period Nadir', value: '76.2 kg', subtext: '48h post-refeed' },
-    { label: 'Net Mass Loss', value: '-1.80 kg', subtext: '-2.30% total body' },
-    { label: 'Projected Goal', value: '74.5 kg', subtext: 'Nov 18 (~24 Days)' },
-  ],
+  measurements = [],
+  onLogWeight,
+  summaryMetrics,
 }: ChartWidgetProps) {
   const [selectedMetric, setSelectedMetric] = useState(activeMetric);
   const [selectedRange, setSelectedRange] = useState(activeRange);
-  const [isHovering, setIsHovering] = useState(true);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
-  const metrics = ['Weight (kg)', 'Body Fat %', 'Lean Mass'];
+  const metrics = ['Weight (kg)', 'Body Fat %'];
   const ranges = ['7D', '30D', '90D', '1Y'];
 
+  // Ordina i dati cronologicamente (dal più vecchio al più recente per l'asse X)
+  const sortedData = [...measurements]
+    .filter((m) => m && m.weightKg > 0)
+    .sort((a, b) => {
+      const dateA = new Date(a.recordedAt || a.date || 0).getTime();
+      const dateB = new Date(b.recordedAt || b.date || 0).getTime();
+      return dateA - dateB;
+    });
+
+  const hasEnoughData = sortedData.length >= 2;
+
+  // Calcola metriche di riepilogo dinamiche se ci sono dati reali
+  let computedSummary: MetricStripItem[] = summaryMetrics || [];
+  if (hasEnoughData && (!summaryMetrics || summaryMetrics.length === 0)) {
+    const starting = sortedData[0];
+    const latest = sortedData[sortedData.length - 1];
+    const weights = sortedData.map((d) => Number(d.weightKg));
+    const minWeight = Math.min(...weights);
+    const netLoss = (latest.weightKg - starting.weightKg).toFixed(2);
+    const startDate = new Date(starting.recordedAt || starting.date || '').toLocaleDateString('it-IT', {
+      day: 'numeric',
+      month: 'short',
+    });
+    const latestDate = new Date(latest.recordedAt || latest.date || '').toLocaleDateString('it-IT', {
+      day: 'numeric',
+      month: 'short',
+    });
+
+    computedSummary = [
+      {
+        label: 'Starting Mass',
+        value: `${starting.weightKg.toFixed(1)} kg`,
+        subtext: startDate,
+      },
+      {
+        label: 'Period Nadir',
+        value: `${minWeight.toFixed(1)} kg`,
+        subtext: 'Minimo registrato',
+      },
+      {
+        label: 'Net Mass Loss',
+        value: `${Number(netLoss) <= 0 ? '' : '+'}${netLoss} kg`,
+        subtext: 'Delta totale',
+      },
+      {
+        label: 'Current Mass',
+        value: `${latest.weightKg.toFixed(1)} kg`,
+        subtext: latestDate,
+      },
+    ];
+  }
+
+  // Dimensioni SVG per il canvas reattivo
+  const svgWidth = 700;
+  const svgHeight = 210;
+  const paddingX = 40;
+  const paddingY = 25;
+
+  // Calcolo scala Y
+  const isWeightMetric = selectedMetric === 'Weight (kg)';
+  const values = sortedData.map((d) =>
+    isWeightMetric ? Number(d.weightKg) : Number(d.bodyFatPercentage || 15),
+  );
+
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values);
+  const buffer = rawMax === rawMin ? 2 : (rawMax - rawMin) * 0.15;
+  const minY = Math.floor(rawMin - buffer);
+  const maxY = Math.ceil(rawMax + buffer);
+  const rangeY = maxY - minY || 1;
+
+  // Coordinate SVG dei punti
+  const points = sortedData.map((d, idx) => {
+    const val = isWeightMetric ? Number(d.weightKg) : Number(d.bodyFatPercentage || 15);
+    const x = paddingX + (idx / (sortedData.length - 1)) * (svgWidth - paddingX * 2);
+    const y = svgHeight - paddingY - ((val - minY) / rangeY) * (svgHeight - paddingY * 2);
+    return { x, y, data: d, val };
+  });
+
+  const polylinePoints = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const polygonPoints = `10,${svgHeight} ${polylinePoints} ${svgWidth - 10},${svgHeight}`;
+
+  const activePoint = hoverIndex !== null && points[hoverIndex] ? points[hoverIndex] : points[points.length - 1];
+
   return (
-    <div className="rounded-xl bg-surface-container-low p-space-lg flex flex-col gap-space-md shadow-sm">
+    <div className="rounded-xl bg-surface-container-low p-space-lg flex flex-col gap-space-md shadow-sm border border-outline-variant/20">
       {/* Panel Sub-header with Metrics Toggle & Range */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm">
         <div className="flex flex-col">
@@ -88,163 +173,188 @@ export function ChartWidget({
         </div>
       </div>
 
-      {/* Legend Ribbon */}
-      <div className="flex flex-wrap items-center gap-space-md font-label-data-sm text-label-data-sm text-outline">
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-0.5 bg-primary rounded-full shadow-[0_0_8px_rgba(78,222,163,0.5)]"></span>
-          Actual Weighed Mass
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-0.5 bg-secondary rounded-full"></span>
-          7-Day Exponential Moving Avg
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-0.5 bg-outline-variant rounded-full"></span>
-          Caloric Model Target (Linear)
-        </span>
-      </div>
-
-      {/* High Precision SVG Chart Visualization Canvas */}
-      <div
-        className="relative w-full h-72 bg-surface-container-lowest rounded-lg p-space-sm flex flex-col justify-between overflow-hidden"
-        onMouseEnter={() => setIsHovering(true)}
-      >
-        {/* Ambient Glow Flare */}
-        <div className="absolute -top-12 left-1/3 w-64 h-32 bg-primary/10 rounded-full blur-3xl pointer-events-none"></div>
-
-        {/* Y-Axis Ticks & Grid Background Lines */}
-        <div className="absolute inset-x-space-sm top-space-sm bottom-8 flex flex-col justify-between pointer-events-none">
-          <div className="flex items-center justify-between w-full">
-            <span className="font-label-data-sm text-label-data-sm text-outline">78.5 kg</span>
-            <div className="w-full ml-3 h-[1px] bg-surface-container-high opacity-40"></div>
-          </div>
-          <div className="flex items-center justify-between w-full">
-            <span className="font-label-data-sm text-label-data-sm text-outline">77.5 kg</span>
-            <div className="w-full ml-3 h-[1px] bg-surface-container-high opacity-40"></div>
-          </div>
-          <div className="flex items-center justify-between w-full">
-            <span className="font-label-data-sm text-label-data-sm text-outline">76.5 kg</span>
-            <div className="w-full ml-3 h-[1px] bg-surface-container-high opacity-40"></div>
-          </div>
-          <div className="flex items-center justify-between w-full">
-            <span className="font-label-data-sm text-label-data-sm text-outline">75.5 kg</span>
-            <div className="w-full ml-3 h-[1px] bg-surface-container-high opacity-40"></div>
-          </div>
+      {/* Se non ci sono almeno 2 punti, mostra Empty State accogliente */}
+      {!hasEnoughData ? (
+        <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-lg bg-surface-container-lowest border border-dashed border-outline-variant/30">
+          <Scale className="w-10 h-10 text-primary/40 mb-3" />
+          <h4 className="text-sm font-semibold text-on-surface mb-1 font-sans">
+            Nessuna misurazione registrata
+          </h4>
+          <p className="text-xs text-outline max-w-sm mb-4 font-sans leading-relaxed">
+            Aggiungi il tuo peso corporeo per iniziare a visualizzare il grafico di convergenza e la traiettoria nel tempo.
+          </p>
+          {onLogWeight && (
+            <button
+              type="button"
+              onClick={onLogWeight}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-black font-semibold text-xs font-sans transition active:scale-95 shadow-md shadow-primary/20 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Registra Peso Ora</span>
+            </button>
+          )}
         </div>
-
-        {/* SVG Continuous Spline Chart Rendering */}
-        <svg
-          className="w-full h-full pt-2 pb-6 px-12 z-10"
-          preserveAspectRatio="none"
-          viewBox="0 0 700 210"
-        >
-          <defs>
-            <linearGradient id="primaryAreaGrad" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#4edea3" stopOpacity="0.25"></stop>
-              <stop offset="100%" stopColor="#4edea3" stopOpacity="0.0"></stop>
-            </linearGradient>
-          </defs>
-          {/* Planned Deficit Target Line (Dashed) */}
-          <line
-            stroke="#3c4a42"
-            strokeDasharray="4,4"
-            strokeWidth="1.5"
-            x1="10"
-            x2="690"
-            y1="40"
-            y2="175"
-          ></line>
-          {/* Weight Shaded Area Gradient */}
-          <polygon
-            fill="url(#primaryAreaGrad)"
-            points="10,48 55,56 110,64 165,72 220,84 275,80 330,96 385,110 440,118 495,124 550,138 605,142 660,154 690,158 690,205 10,205"
-          ></polygon>
-          {/* 7-day EMA Rolling Curve (Indigo) */}
-          <path
-            d="M 10 50 Q 150 70 330 98 T 690 156"
-            fill="none"
-            opacity="0.8"
-            stroke="#c0c1ff"
-            strokeWidth="2"
-          ></path>
-          {/* Daily Actual Measured Mass Path (Phosphor Emerald) */}
-          <path
-            d="M 10 48 L 55 56 L 110 64 L 165 72 L 220 84 L 275 80 L 330 96 L 385 110 L 440 118 L 495 124 L 550 138 L 605 142 L 660 154 L 690 158"
-            fill="none"
-            stroke="#4edea3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2.5"
-          ></path>
-          {/* Data Point Anchors & Tooltip Marker Anchor */}
-          <circle cx="275" cy="80" fill="#4edea3" r="3"></circle>
-          <circle cx="440" cy="118" fill="#4edea3" r="3"></circle>
-          <circle
-            cx="660"
-            cy="154"
-            fill="#12131a"
-            r="4"
-            stroke="#4edea3"
-            strokeWidth="2.5"
-          ></circle>
-          {/* Vertical Crosshair rule for inspection point */}
-          <line
-            opacity="0.5"
-            stroke="#4edea3"
-            strokeDasharray="2,2"
-            strokeWidth="1"
-            x1="660"
-            x2="660"
-            y1="10"
-            y2="195"
-          ></line>
-        </svg>
-
-        {/* Interactive Hover Tooltip Popover */}
-        {isHovering && (
-          <div className="absolute right-12 top-10 bg-surface-container-high/95 backdrop-blur-md rounded-lg p-space-xs shadow-xl z-20 flex flex-col gap-0.5">
-            <div className="flex items-center justify-between gap-4 font-label-data-sm text-label-data-sm text-outline">
-              <span>Oct 24 (Day 28)</span>
-              <span className="text-primary font-semibold">Fast: 14h</span>
-            </div>
-            <div className="font-label-data-md text-label-data-md font-bold text-on-surface">
-              76.4 kg{' '}
-              <span className="font-normal text-body-sm text-outline">(-0.3 vs prev)</span>
-            </div>
-            <div className="font-label-caps text-label-caps uppercase text-outline">
-              Delta vs Baseline:{' '}
-              <span className="text-primary font-semibold">-1.8 kg</span>
-            </div>
-          </div>
-        )}
-
-        {/* X-Axis Timeline Markers */}
-        <div className="flex justify-between items-center px-12 pt-1 font-label-data-sm text-label-data-sm text-outline z-10">
-          <span>Sep 27</span>
-          <span>Oct 04</span>
-          <span>Oct 11</span>
-          <span>Oct 18</span>
-          <span className="text-primary font-semibold">Today (Oct 25)</span>
-        </div>
-      </div>
-
-      {/* Telemetry Summary Metric Strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-space-sm pt-space-xs">
-        {summaryMetrics.map((m, idx) => (
-          <div key={idx} className="p-space-sm rounded bg-surface-container flex flex-col">
-            <span className="font-label-caps text-label-caps uppercase text-outline">
-              {m.label}
+      ) : (
+        <>
+          {/* Legend Ribbon */}
+          <div className="flex flex-wrap items-center gap-space-md font-label-data-sm text-label-data-sm text-outline">
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-0.5 bg-primary rounded-full shadow-[0_0_8px_rgba(78,222,163,0.5)]"></span>
+              {selectedMetric === 'Weight (kg)' ? 'Massa Corporea Misurata (kg)' : 'Percentuale Grasso (%)'}
             </span>
-            <span className="font-label-data-md text-label-data-md text-on-surface font-semibold">
-              {m.value}
-            </span>
-            <span className="font-label-data-sm text-label-data-sm text-outline">
-              {m.subtext}
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-0.5 bg-secondary rounded-full"></span>
+              Punti di Rilevamento Telemetrici
             </span>
           </div>
-        ))}
-      </div>
+
+          {/* High Precision SVG Chart Canvas */}
+          <div className="relative w-full h-72 bg-surface-container-lowest rounded-lg p-space-sm flex flex-col justify-between overflow-hidden">
+            {/* Ambient Glow Flare */}
+            <div className="absolute -top-12 left-1/3 w-64 h-32 bg-primary/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            {/* Y-Axis Grid Lines */}
+            <div className="absolute inset-x-space-sm top-space-sm bottom-8 flex flex-col justify-between pointer-events-none">
+              <div className="flex items-center justify-between w-full">
+                <span className="font-label-data-sm text-label-data-sm text-outline font-mono">
+                  {maxY.toFixed(1)} {isWeightMetric ? 'kg' : '%'}
+                </span>
+                <div className="w-full ml-3 h-[1px] bg-surface-container-high opacity-40"></div>
+              </div>
+              <div className="flex items-center justify-between w-full">
+                <span className="font-label-data-sm text-label-data-sm text-outline font-mono">
+                  {((maxY + minY) / 2).toFixed(1)} {isWeightMetric ? 'kg' : '%'}
+                </span>
+                <div className="w-full ml-3 h-[1px] bg-surface-container-high opacity-40"></div>
+              </div>
+              <div className="flex items-center justify-between w-full">
+                <span className="font-label-data-sm text-label-data-sm text-outline font-mono">
+                  {minY.toFixed(1)} {isWeightMetric ? 'kg' : '%'}
+                </span>
+                <div className="w-full ml-3 h-[1px] bg-surface-container-high opacity-40"></div>
+              </div>
+            </div>
+
+            {/* SVG Spline */}
+            <svg
+              className="w-full h-full pt-2 pb-6 px-4 z-10"
+              preserveAspectRatio="none"
+              viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+            >
+              <defs>
+                <linearGradient id="primaryAreaGradLive" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor="#4edea3" stopOpacity="0.25"></stop>
+                  <stop offset="100%" stopColor="#4edea3" stopOpacity="0.0"></stop>
+                </linearGradient>
+              </defs>
+
+              {/* Shaded Area */}
+              <polygon fill="url(#primaryAreaGradLive)" points={polygonPoints} />
+
+              {/* Continuous Line */}
+              <polyline
+                fill="none"
+                stroke="#4edea3"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                points={polylinePoints}
+              />
+
+              {/* Data Points */}
+              {points.map((p, idx) => (
+                <circle
+                  key={idx}
+                  cx={p.x}
+                  cy={p.y}
+                  r={hoverIndex === idx ? 5 : 3.5}
+                  fill={hoverIndex === idx ? '#4edea3' : '#12131a'}
+                  stroke="#4edea3"
+                  strokeWidth="2"
+                  className="cursor-pointer transition-all duration-150"
+                  onMouseEnter={() => setHoverIndex(idx)}
+                  onMouseLeave={() => setHoverIndex(null)}
+                />
+              ))}
+
+              {/* Active Inspection Crosshair */}
+              {activePoint && (
+                <line
+                  opacity="0.5"
+                  stroke="#4edea3"
+                  strokeDasharray="2,2"
+                  strokeWidth="1"
+                  x1={activePoint.x}
+                  x2={activePoint.x}
+                  y1="10"
+                  y2={svgHeight - 15}
+                />
+              )}
+            </svg>
+
+            {/* Hover Tooltip Popover */}
+            {activePoint && (
+              <div className="absolute right-6 top-6 bg-surface-container-high/95 backdrop-blur-md rounded-lg p-2.5 shadow-xl z-20 flex flex-col gap-0.5 border border-outline-variant/30 font-mono">
+                <div className="flex items-center justify-between gap-4 text-[11px] text-outline">
+                  <span>
+                    {new Date(activePoint.data.recordedAt || activePoint.data.date || '').toLocaleDateString(
+                      'it-IT',
+                      { day: 'numeric', month: 'short', year: 'numeric' },
+                    )}
+                  </span>
+                  <span className="text-primary font-semibold">Live Telemetry</span>
+                </div>
+                <div className="text-xs font-bold text-on-surface">
+                  {activePoint.val.toFixed(1)} {isWeightMetric ? 'kg' : '%'}
+                </div>
+              </div>
+            )}
+
+            {/* X-Axis Timeline Markers */}
+            <div className="flex justify-between items-center px-6 pt-1 font-label-data-sm text-label-data-sm text-outline z-10 font-mono">
+              <span>
+                {new Date(sortedData[0].recordedAt || sortedData[0].date || '').toLocaleDateString('it-IT', {
+                  day: 'numeric',
+                  month: 'short',
+                })}
+              </span>
+              <span>
+                {new Date(
+                  sortedData[Math.floor(sortedData.length / 2)].recordedAt ||
+                    sortedData[Math.floor(sortedData.length / 2)].date ||
+                    '',
+                ).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
+              </span>
+              <span className="text-primary font-semibold">
+                {new Date(
+                  sortedData[sortedData.length - 1].recordedAt ||
+                    sortedData[sortedData.length - 1].date ||
+                    '',
+                ).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
+              </span>
+            </div>
+          </div>
+
+          {/* Telemetry Summary Metric Strip */}
+          {computedSummary.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-space-sm pt-space-xs">
+              {computedSummary.map((m, idx) => (
+                <div key={idx} className="p-space-sm rounded bg-surface-container flex flex-col">
+                  <span className="font-label-caps text-label-caps uppercase text-outline">
+                    {m.label}
+                  </span>
+                  <span className="font-label-data-md text-label-data-md text-on-surface font-semibold font-mono">
+                    {m.value}
+                  </span>
+                  <span className="font-label-data-sm text-label-data-sm text-outline">
+                    {m.subtext}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
-

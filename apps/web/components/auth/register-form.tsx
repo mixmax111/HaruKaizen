@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../../lib/auth-context';
-import { apiClient } from '../../lib/api';
+import { apiClient, setAccessToken } from '../../lib/api';
 import { AuthCard } from './auth-card';
 import { AltchaChallenge } from './altcha-challenge';
 import { AuthSplashScreen } from './auth-splash-screen';
@@ -21,15 +22,23 @@ export function RegisterForm() {
   const [lifestyleMultiplier, setLifestyleMultiplier] = useState('1.55');
 
   const [isAltchaVerified, setIsAltchaVerified] = useState(false);
+  const [altchaPayload, setAltchaPayload] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showSplash, setShowSplash] = useState(false);
-  const { login } = useAuth();
+  const { user, isLoading, login } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      router.replace('/dashboard');
+    }
+  }, [isLoading, user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!isAltchaVerified) {
+    if (!isAltchaVerified || !altchaPayload) {
       setError('Proof-of-Work crittografico richiesto prima della registrazione.');
       return;
     }
@@ -48,18 +57,22 @@ export function RegisterForm() {
     setSubmitting(true);
 
     try {
-      // 1. Registrazione account base
-      const res = await apiClient.post('/auth/register', { email, password });
+      // 1. Registrazione account base con Proof-of-Work crittografico
+      const res = await apiClient.post('/auth/register', {
+        email,
+        password,
+        altchaPayload,
+      });
       const token = res.data.data?.accessToken || res.data.accessToken;
 
       if (!token) {
         throw new Error('Nessun token restituito dal gateway.');
       }
 
-      // 2. Login client
-      await login(token);
+      // Imposta immediatamente il token in apiClient per le chiamate successive
+      setAccessToken(token);
 
-      // 3. Salvataggio biometria se fornita
+      // 2. Salvataggio biometria se fornita
       const patchData: Record<string, any> = {};
       if (heightCm) patchData.heightCm = Number(heightCm);
       if (birthDate) patchData.birthDate = birthDate;
@@ -74,6 +87,8 @@ export function RegisterForm() {
         }
       }
 
+      // 3. Login nel context senza redirect immediato (delegato a AuthSplashScreen)
+      await login(token, false);
       setShowSplash(true);
     } catch (err: any) {
       const msg =
@@ -284,7 +299,10 @@ export function RegisterForm() {
         {/* Altcha Challenge */}
         <AltchaChallenge
           isVerified={isAltchaVerified}
-          onVerified={() => setIsAltchaVerified(true)}
+          onVerified={(payload) => {
+            setAltchaPayload(payload);
+            setIsAltchaVerified(true);
+          }}
         />
 
         {/* Submit Button */}

@@ -13,8 +13,17 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { COLORS, API_BASE_URL } from '../../src/config';
+import {
+  COLORS,
+  API_BASE_URL,
+  initApiBaseUrl,
+  setDynamicApiBaseUrl,
+  resetDynamicApiBaseUrl,
+} from '../../src/config';
+import { apiClient, setAuthTokens } from '../../src/services/api';
 import { hapticFeedback } from '../../src/utils/haptics';
+import { AltchaChallenge } from '../../src/components/auth/AltchaChallenge';
+import { solveAltcha, AltchaChallenge as IAltchaChallenge } from '../../src/utils/altchaSolver';
 
 export default function MobileLoginScreen() {
   const router = useRouter();
@@ -25,38 +34,65 @@ export default function MobileLoginScreen() {
   const [isFocusedEmail, setIsFocusedEmail] = useState(false);
   const [isFocusedPassword, setIsFocusedPassword] = useState(false);
 
-  // Altcha PoW State
-  const [altchaStatus, setAltchaStatus] = useState<'idle' | 'computing' | 'verified'>('idle');
-  const [altchaProgress, setAltchaProgress] = useState(0);
-  const [cpuLoad, setCpuLoad] = useState(14);
-  const [nonce, setNonce] = useState('0x00000000');
+  // Dynamic Node Endpoint Drawer State
+  const [isConfigDrawerOpen, setIsConfigDrawerOpen] = useState(false);
+  const [serverUrlInput, setServerUrlInput] = useState(API_BASE_URL);
+  const [pingResult, setPingResult] = useState<string | null>(null);
+  const [isTestingPing, setIsTestingPing] = useState(false);
 
-  const startAltchaPoW = () => {
-    if (altchaStatus !== 'idle') return;
-    setAltchaStatus('computing');
-    setAltchaProgress(0);
+  // Inizializza URL custom all'avvio
+  React.useEffect(() => {
+    initApiBaseUrl().then((url) => setServerUrlInput(url));
+  }, []);
 
-    const interval = setInterval(() => {
-      setAltchaProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setAltchaStatus('verified');
-          hapticFeedback.success();
-          return 100;
-        }
-        setCpuLoad(Math.floor(12 + Math.random() * 8));
-        setNonce('0x' + Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0'));
-        return prev + 20;
-      });
-    }, 120);
+  const handleTestPing = async () => {
+    setIsTestingPing(true);
+    setPingResult(null);
+    try {
+      let testEndpoint = serverUrlInput.trim().replace(/\/+$/, '');
+      if (!testEndpoint.endsWith('/api/v1') && !testEndpoint.includes('/api/')) {
+        testEndpoint = `${testEndpoint}/api/v1/health`;
+      } else {
+        testEndpoint = `${testEndpoint}/health`;
+      }
+
+      const res = await fetch(testEndpoint);
+      if (res.ok) {
+        const json = await res.json();
+        const data = json?.data || json;
+        setPingResult(`ONLINE: ${data?.dbEngine || 'Node OK'} (Ping: ${data?.dbLatencyMs ?? '<1'}ms)`);
+        await hapticFeedback.success();
+      } else {
+        setPingResult(`HTTP ${res.status}`);
+        await hapticFeedback.warning();
+      }
+    } catch (e: any) {
+      setPingResult(`OFFLINE: ${e.message || 'Host irraggiungibile'}`);
+      await hapticFeedback.warning();
+    } finally {
+      setIsTestingPing(false);
+    }
   };
 
-  const handleLogin = async () => {
-    if (altchaStatus !== 'verified') {
-      Alert.alert('Sicurezza', 'Completa il Proof-of-Work crittografico prima del login.');
-      return;
-    }
+  const handleSaveEndpoint = async () => {
+    const saved = await setDynamicApiBaseUrl(serverUrlInput);
+    setServerUrlInput(saved);
+    await hapticFeedback.success();
+    Alert.alert('Endpoint Aggiornato', `Il nodo ora punta a: ${saved}`);
+    setIsConfigDrawerOpen(false);
+  };
 
+  const handleResetEndpoint = async () => {
+    const def = await resetDynamicApiBaseUrl();
+    setServerUrlInput(def);
+    await hapticFeedback.light();
+    Alert.alert('Endpoint Ripristinato', `Ripristinato valore standard: ${def}`);
+  };
+
+  // Altcha PoW Verified Payload
+  const [altchaPayload, setAltchaPayload] = useState<string>('');
+
+  const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       Alert.alert('Errore', 'Inserisci sia email che password.');
       return;
@@ -66,31 +102,51 @@ export default function MobileLoginScreen() {
     await hapticFeedback.medium();
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
-      });
+      let payloadToSubmit = altchaPayload;
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data?.error?.message || data?.message || 'Credenziali non valide');
+      // Se il PoW non è ancora completato, calcolalo automaticamente on-the-fly in ~40ms
+      if (!payloadToSubmit) {
+        try {
+          const challengeRes = await apiClient.get('/auth/altcha-challenge', { timeout: 10000 });
+          const challengeData: IAltchaChallenge = challengeRes.data?.data || challengeRes.data;
+          if (!challengeData?.challenge) {
+            throw new Error('Sfida crittografica non ricevuta dal gateway.');
+          }
+          const { base64Payload } = await solveAltcha(challengeData);
+          payloadToSubmit = base64Payload;
+          setAltchaPayload(base64Payload);
+        } catch (powErr: any) {
+          throw new Error('Impossibile completare la verifica crittografica anti-bot. Verifica la connessione al server.');
+        }
       }
 
-      const token = data?.data?.accessToken || data?.accessToken;
+      const response = await apiClient.post('/auth/login', {
+        email: email.trim(),
+        password,
+        altchaPayload: payloadToSubmit,
+      });
+
+      const resData = response.data?.data || response.data;
+      const token = resData?.accessToken;
+      const refreshToken = resData?.refreshToken;
       if (!token) {
         throw new Error('Nessun token di accesso ricevuto dal server.');
       }
 
-      // Salva token in locale
-      await AsyncStorage.setItem('@harukaizen:auth_token', token);
+      // Salva token in locale e notifica reattivamente lo store
+      await setAuthTokens(token, refreshToken || null);
       await hapticFeedback.success();
 
-      // Transizione alla dashboard principale
+      // Transizione alla dashboard principale (supportata da AuthGuard in RootLayout)
       router.replace('/(tabs)');
     } catch (err: any) {
-      Alert.alert('Autenticazione Fallita', err.message || 'Errore di connessione al nodo backend.');
+      const msg =
+        err.response?.data?.message ||
+        err.response?.data?.error?.message ||
+        err.message ||
+        'Errore di connessione al nodo backend o credenziali non valide.';
+      Alert.alert('Autenticazione Fallita', msg);
+      await hapticFeedback.warning();
     } finally {
       setIsLoading(false);
     }
@@ -127,11 +183,11 @@ export default function MobileLoginScreen() {
 
         {/* Terminal Card */}
         <View style={styles.terminalCard}>
-          <Text style={styles.cardHeader}>&gt; OPERATOR_AUTHENTICATION</Text>
+          <Text style={styles.cardHeader}>&gt; AUTHENTICATION</Text>
 
           {/* Email Input */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>&gt; TARGET_EMAIL</Text>
+            <Text style={styles.fieldLabel}>&gt; EMAIL</Text>
             <TextInput
               style={[
                 styles.textInput,
@@ -150,7 +206,7 @@ export default function MobileLoginScreen() {
 
           {/* Password Input */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>&gt; SECURE_PASSPHRASE</Text>
+            <Text style={styles.fieldLabel}>&gt; PASSWORD</Text>
             <TextInput
               style={[
                 styles.textInput,
@@ -166,63 +222,20 @@ export default function MobileLoginScreen() {
             />
           </View>
 
-          {/* Mobile Altcha Challenge Simulator */}
-          <View style={styles.altchaContainer}>
-            <View style={styles.altchaHeaderRow}>
-              <Text style={styles.altchaTitle}>ALTCHA PROOF-OF-WORK</Text>
-              <Text style={styles.altchaStatusText}>
-                {altchaStatus === 'verified' ? 'SHA-256 OK' : 'CRYPTO CHALLENGE'}
-              </Text>
-            </View>
-
-            {altchaStatus === 'idle' && (
-              <View style={styles.altchaRow}>
-                <Text style={styles.altchaAwaitText}>&gt; Awaiting calculation...</Text>
-                <TouchableOpacity
-                  style={styles.altchaBtn}
-                  onPress={startAltchaPoW}
-                >
-                  <Text style={styles.altchaBtnText}>Compute PoW</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {altchaStatus === 'computing' && (
-              <View style={styles.altchaComputingBox}>
-                <View style={styles.altchaComputeStats}>
-                  <Text style={styles.altchaComputeText}>
-                    Computing proof... CPU {cpuLoad}%
-                  </Text>
-                  <Text style={styles.altchaNonceText}>{nonce}</Text>
-                </View>
-                <View style={styles.progressBarTrack}>
-                  <View
-                    style={[
-                      styles.progressBarFill,
-                      { width: `${altchaProgress}%` },
-                    ]}
-                  />
-                </View>
-              </View>
-            )}
-
-            {altchaStatus === 'verified' && (
-              <View style={styles.altchaVerifiedBox}>
-                <Text style={styles.altchaVerifiedText}>
-                  ✓ Cryptographic Proof Verified
-                </Text>
-                <Text style={styles.altchaHashText}>{nonce.slice(0, 8)}...OK</Text>
-              </View>
-            )}
-          </View>
+          {/* Proof-of-Work Challenge */}
+          <AltchaChallenge
+            isVerified={Boolean(altchaPayload)}
+            onVerified={(payload) => setAltchaPayload(payload)}
+            onReset={() => setAltchaPayload('')}
+          />
 
           {/* Sign In Button */}
           <TouchableOpacity
             style={[
               styles.btnSignIn,
-              altchaStatus !== 'verified' || isLoading ? styles.btnSignInDisabled : styles.btnSignInActive,
+              isLoading ? styles.btnSignInDisabled : styles.btnSignInActive,
             ]}
-            disabled={altchaStatus !== 'verified' || isLoading}
+            disabled={isLoading}
             onPress={handleLogin}
           >
             {isLoading ? (
@@ -231,13 +244,104 @@ export default function MobileLoginScreen() {
               <Text
                 style={[
                   styles.btnSignInText,
-                  altchaStatus === 'verified' && styles.btnSignInTextActive,
+                  styles.btnSignInTextActive,
                 ]}
               >
                 [SIGN IN MOBILE NODE]
               </Text>
             )}
           </TouchableOpacity>
+
+          {/* Switch to Register */}
+          <TouchableOpacity
+            style={styles.switchAuthBtn}
+            onPress={() => router.push('/(auth)/register')}
+          >
+            <Text style={styles.switchAuthText}>
+              Non hai ancora un profilo?{' '}
+              <Text style={styles.switchAuthLink}>Inizializza Profilo &gt;</Text>
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Collapsible Node Endpoint Switcher Drawer */}
+        <View style={styles.endpointDrawerContainer}>
+          <TouchableOpacity
+            style={styles.endpointToggleBtn}
+            onPress={() => setIsConfigDrawerOpen((prev) => !prev)}
+          >
+            <Text style={styles.endpointToggleText}>
+              ⚙️ [NODE ENDPOINT CONFIG] {isConfigDrawerOpen ? '▲' : '▼'}
+            </Text>
+          </TouchableOpacity>
+
+          {isConfigDrawerOpen && (
+            <View style={styles.endpointCard}>
+              <Text style={styles.endpointDesc}>
+                Configura l&apos;indirizzo IP LAN del server o dominio Cloudflare per APK standalone.
+              </Text>
+
+              <TextInput
+                style={styles.endpointInput}
+                value={serverUrlInput}
+                onChangeText={setServerUrlInput}
+                placeholder="http://192.168.1.100:8002/api/v1"
+                placeholderTextColor="#71717a"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+
+              {pingResult && (
+                <View
+                  style={[
+                    styles.pingResultBox,
+                    pingResult.startsWith('ONLINE')
+                      ? styles.pingResultSuccess
+                      : styles.pingResultError,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.pingResultText,
+                      pingResult.startsWith('ONLINE')
+                        ? styles.pingResultTextSuccess
+                        : styles.pingResultTextError,
+                    ]}
+                  >
+                    {pingResult}
+                  </Text>
+                </View>
+              )}
+
+              <View style={styles.endpointActionsRow}>
+                <TouchableOpacity
+                  style={[styles.endpointBtn, styles.endpointBtnPing]}
+                  disabled={isTestingPing}
+                  onPress={handleTestPing}
+                >
+                  {isTestingPing ? (
+                    <ActivityIndicator size="small" color={COLORS.primary} />
+                  ) : (
+                    <Text style={styles.endpointBtnTextPing}>TEST PING</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.endpointBtn, styles.endpointBtnSave]}
+                  onPress={handleSaveEndpoint}
+                >
+                  <Text style={styles.endpointBtnTextSave}>SALVA ENDPOINT</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.endpointBtn, styles.endpointBtnReset]}
+                  onPress={handleResetEndpoint}
+                >
+                  <Text style={styles.endpointBtnTextReset}>RESET</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Footer info */}
@@ -496,6 +600,19 @@ const styles = StyleSheet.create({
   btnSignInTextActive: {
     color: '#0d0e15',
   },
+  switchAuthBtn: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  switchAuthText: {
+    color: COLORS.textDim,
+    fontFamily: 'monospace',
+    fontSize: 11,
+  },
+  switchAuthLink: {
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
   footer: {
     marginTop: 24,
     alignItems: 'center',
@@ -510,6 +627,114 @@ const styles = StyleSheet.create({
     color: '#52525b',
     fontSize: 9,
     fontFamily: 'monospace',
+  },
+  endpointDrawerContainer: {
+    marginTop: 18,
+    marginBottom: 6,
+  },
+  endpointToggleBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#181920',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#27272a',
+    alignItems: 'center',
+  },
+  endpointToggleText: {
+    fontFamily: 'monospace',
+    color: COLORS.primary,
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  endpointCard: {
+    marginTop: 8,
+    backgroundColor: '#12131a',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#27272a',
+    gap: 10,
+  },
+  endpointDesc: {
+    color: '#a1a1aa',
+    fontSize: 10,
+    fontFamily: 'monospace',
+  },
+  endpointInput: {
+    backgroundColor: '#181920',
+    color: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#3f3f46',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 12,
+    fontFamily: 'monospace',
+  },
+  pingResultBox: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  pingResultSuccess: {
+    backgroundColor: 'rgba(78,222,163,0.1)',
+    borderColor: COLORS.primary,
+  },
+  pingResultError: {
+    backgroundColor: 'rgba(239,68,68,0.1)',
+    borderColor: '#ef4444',
+  },
+  pingResultText: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+  },
+  pingResultTextSuccess: {
+    color: COLORS.primary,
+  },
+  pingResultTextError: {
+    color: '#f87171',
+  },
+  endpointActionsRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  endpointBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  endpointBtnPing: {
+    backgroundColor: '#1e1f26',
+    borderWidth: 1,
+    borderColor: '#3f3f46',
+  },
+  endpointBtnTextPing: {
+    fontFamily: 'monospace',
+    color: '#e4e4e7',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  endpointBtnSave: {
+    backgroundColor: COLORS.primary,
+  },
+  endpointBtnTextSave: {
+    fontFamily: 'monospace',
+    color: COLORS.background,
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  endpointBtnReset: {
+    backgroundColor: '#27272a',
+    maxWidth: 60,
+  },
+  endpointBtnTextReset: {
+    fontFamily: 'monospace',
+    color: '#a1a1aa',
+    fontSize: 10,
   },
 });
 

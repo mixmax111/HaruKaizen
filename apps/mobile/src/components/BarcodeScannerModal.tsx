@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
 import { COLORS, API_BASE_URL } from '../config';
+import { apiClient } from '../services/api';
 import { hapticFeedback } from '../utils/haptics';
 
 export interface ScannedFoodResult {
@@ -74,23 +75,18 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerProps> = ({
     const rawBarcode = result.data;
 
     try {
-      // 3. Chiamata all'endpoint HaruKaizen backend (OpenFoodFacts proxy con fallback e cache)
-      const res = await fetch(`${API_BASE_URL}/nutrition/barcode/${encodeURIComponent(rawBarcode)}`);
-
-      if (!res.ok) {
-        throw new Error(`Codice a barre ${rawBarcode} non trovato nel database.`);
-      }
-
-      const data = await res.json();
+      // 3. Chiamata all'endpoint HaruKaizen backend (OpenFoodFacts v3 aggregator con fallback e cache)
+      const res = await apiClient.get(`/nutrition/food/barcode/${encodeURIComponent(rawBarcode)}`);
+      const data = res.data?.data || res.data;
       
       const parsedFood: ScannedFoodResult = {
         code: rawBarcode,
         name: data.name || data.product_name || 'Alimento Scansionato',
         brand: data.brand || data.brands || '',
-        calories: Number(data.calories || data.nutriments?.energy_kcal || 0),
-        proteins: Number(data.proteins || data.nutriments?.proteins || 0),
-        carbs: Number(data.carbs || data.nutriments?.carbohydrates || 0),
-        fats: Number(data.fats || data.nutriments?.fat || 0),
+        calories: Number(data.kcalPer100g ?? data.calories ?? data.nutriments?.energy_kcal ?? 0),
+        proteins: Number(data.proteinPer100g ?? data.proteins ?? data.nutriments?.proteins ?? 0),
+        carbs: Number(data.carbsPer100g ?? data.carbs ?? data.nutriments?.carbohydrates ?? 0),
+        fats: Number(data.fatPer100g ?? data.fats ?? data.nutriments?.fat ?? 0),
       };
 
       onFoodFound(parsedFood);

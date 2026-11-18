@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../../lib/auth-context';
 import { apiClient } from '../../lib/api';
 import { AuthCard } from './auth-card';
@@ -13,14 +14,22 @@ export function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isAltchaVerified, setIsAltchaVerified] = useState(false);
+  const [altchaPayload, setAltchaPayload] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showSplash, setShowSplash] = useState(false);
-  const { login } = useAuth();
+  const { user, isLoading, login } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      router.replace('/dashboard');
+    }
+  }, [isLoading, user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAltchaVerified) {
+    if (!isAltchaVerified || !altchaPayload) {
       setError('Proof-of-Work crittografico richiesto prima del login.');
       return;
     }
@@ -29,12 +38,16 @@ export function LoginForm() {
     setSubmitting(true);
 
     try {
-      const res = await apiClient.post('/auth/login', { email, password });
+      const res = await apiClient.post('/auth/login', {
+        email,
+        password,
+        altchaPayload,
+      });
       const token = res.data.data?.accessToken || res.data.accessToken;
       if (!token) {
         throw new Error('Nessun token restituito dal gateway di autenticazione.');
       }
-      await login(token);
+      await login(token, false);
       // Sblocca lo splash screen per la transizione terminale
       setShowSplash(true);
     } catch (err: any) {
@@ -122,7 +135,10 @@ export function LoginForm() {
         <div className="pt-1">
           <AltchaChallenge
             isVerified={isAltchaVerified}
-            onVerified={() => setIsAltchaVerified(true)}
+            onVerified={(payload) => {
+              setAltchaPayload(payload);
+              setIsAltchaVerified(true);
+            }}
           />
         </div>
 

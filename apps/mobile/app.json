@@ -15,18 +15,20 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "dev.harukaizen.app"
+      "bundleIdentifier": "com.harukaizen.sovereign"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#09090b"
       },
-      "package": "dev.harukaizen.app",
+      "package": "com.harukaizen.sovereign",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.VIBRATE",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.WAKE_LOCK",
@@ -41,7 +43,15 @@
           "cameraPermission": "Consenti ad HaruKaizen di accedere alla fotocamera per lo scanner barcode e le foto comparative dei progressi fisici."
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

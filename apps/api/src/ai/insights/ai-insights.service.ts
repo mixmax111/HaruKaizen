@@ -1,9 +1,12 @@
-﻿import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { DataAggregatorService } from '../aggregator/data-aggregator.service.js';
 import { PromptBuilderService } from '../prompts/prompt-builder.service.js';
 import { AiOrchestratorService } from '../orchestrator/ai-orchestrator.service.js';
+import { DiskStorageService } from '../../media/storage/disk-storage.service.js';
+import { DocumentsService } from '../../documents/documents.service.js';
 import { ReportType } from '@harukaizen/shared';
+import * as fs from 'node:fs/promises';
 
 @Injectable()
 export class AiInsightsService {
@@ -14,25 +17,83 @@ export class AiInsightsService {
     private readonly aggregator: DataAggregatorService,
     private readonly promptBuilder: PromptBuilderService,
     private readonly orchestrator: AiOrchestratorService,
+    private readonly storage: DiskStorageService,
+    private readonly documentsService: DocumentsService,
   ) {}
 
-  async generateReport(userId: string, reportType: ReportType = ReportType.ON_DEMAND) {
-    this.logger.log(`Generazione report (${reportType}) per utente ${userId}`);
+  async generateReport(
+    userId: string,
+    reportType: ReportType = ReportType.ON_DEMAND,
+    options?: { includeProgressPhotos?: boolean },
+  ) {
+    this.logger.log(`Generazione report (${reportType}) per utente ${userId} (multimodal photos: ${!!options?.includeProgressPhotos})`);
 
-    // 1. Costruzione snapshot
-    const snapshot = await this.aggregator.buildWeeklySnapshot(userId);
+    // 1. Costruzione snapshot e documenti utente
+    const [snapshot, activeDocs] = await Promise.all([
+      this.aggregator.buildWeeklySnapshot(userId),
+      this.documentsService.getActiveRagDocuments(userId),
+    ]);
 
-    // 2. Costruzione prompt (incluso tono coach dinamico)
-    const systemPrompt = this.promptBuilder.buildSystemPrompt(snapshot.user.coachTone);
-    const userPrompt = this.promptBuilder.buildUserPrompt(snapshot);
+    // 2. Pre-check clinico
+    const clinicalCheck = this.promptBuilder.evaluateClinicalGuardrails({
+      sex: snapshot.user.sex,
+      heightCm: snapshot.user.heightCm,
+      weightKg: snapshot.measurements.currentWeightKg,
+      targetKcal: snapshot.nutrition.estimatedTdeeCalories ?? snapshot.nutrition.avgDailyCalories,
+    });
 
-    // 3. Esecuzione chiamata AI tramite Vercel AI SDK
+    // 3. Costruzione system prompt arricchito (con Semi-RAG + guardrails clinici)
+    const systemPrompt = this.promptBuilder.buildSystemPrompt(snapshot.user.coachTone, {
+      userDocuments: activeDocs,
+      clinicalCheck,
+    });
+    const baseTextPrompt = this.promptBuilder.buildUserPrompt(snapshot);
+
+    // 4. Gestione Multimodale Vision (se richiesta)
+    let userPrompt: string | Array<any> = baseTextPrompt;
+
+    if (options?.includeProgressPhotos) {
+      const latestPhotos = await this.prisma.progressMedia.findMany({
+        where: {
+          userId,
+          mediaType: 'image',
+          deletedAt: null,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 2,
+      });
+
+      if (latestPhotos.length > 0) {
+        this.logger.log(`Caricamento di ${latestPhotos.length} foto progresso per analisi multimodale vision...`);
+        const contentParts: Array<any> = [
+          {
+            type: 'text',
+            text: `${baseTextPrompt}\n\n[ANALISI MULTIMODALE VISION]: Di seguito sono allegate le ultime ${latestPhotos.length} foto del fisico dell'utente caricate nei check-in. Valuta visivamente la postura, la proporzione muscolare e l'aderenza visiva rispetto ai dati della bilancia e alle circonferenze.`,
+          },
+        ];
+
+        for (const photo of latestPhotos) {
+          try {
+            const filePath = this.storage.getFilePath(photo.mediaUrl);
+            const fileBuffer = await fs.readFile(filePath);
+            contentParts.push({
+              type: 'image',
+              image: fileBuffer,
+            });
+          } catch (err: any) {
+            this.logger.warn(`Impossibile leggere il file immagine ${photo.mediaUrl}: ${err.message}`);
+          }
+        }
+
+        userPrompt = contentParts;
+      }
+    }
+
+    // 5. Esecuzione chiamata AI tramite Vercel AI SDK
     const insightResult = await this.orchestrator.generateInsight(userId, systemPrompt, userPrompt);
 
-    // 4. Salvataggio su database nel modello AiInsightReport
+    // 6. Salvataggio su database nel modello AiInsightReport
     const timeframeCode = `${snapshot.timeframe.dateStart}_${snapshot.timeframe.dateEnd}`;
-
-    // Payload ibrido salvato in formato strutturato (Markdown + actionItems JSON)
     const aiResponsePayload = JSON.stringify(insightResult);
 
     const report = await this.prisma.aiInsightReport.create({
@@ -99,7 +160,7 @@ export class AiInsightsService {
     try {
       parsed = JSON.parse(report.aiResponseMarkdown);
     } catch {
-      // Fallback
+      // Fallback per report legacy
     }
 
     return {

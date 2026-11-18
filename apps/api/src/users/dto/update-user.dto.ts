@@ -14,6 +14,12 @@ export class UpdateUserDto {
   @IsOptional()
   @IsNumber()
   @IsPositive()
+  @Max(500)
+  weightKg?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
   @Max(300)
   heightCm?: number;
 

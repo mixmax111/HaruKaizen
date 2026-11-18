@@ -60,6 +60,14 @@ export default function TabsLayout() {
           tabBarIcon: ({ color }: { color: string }) => <Text style={{ fontSize: 18, color }}>📷</Text>,
         }}
       />
+      <TypedTabs.Screen
+        name="profile"
+        options={{
+          title: 'Profilo',
+          headerTitle: 'Profilo & Biometria',
+          tabBarIcon: ({ color }: { color: string }) => <Text style={{ fontSize: 18, color }}>👤</Text>,
+        }}
+      />
     </TypedTabs>
   );
 }

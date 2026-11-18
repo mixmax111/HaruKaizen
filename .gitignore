@@ -16,6 +16,12 @@
 .Spotlight-V100
 .Trashes
 
+# Documentazione interna di sviluppo, sprint reports e file di lavoro
+sviluppo doc/
+sviluppo doc/**
+diagramma mermaid.md
+PROJECT_STRUCTURE.md
+.agents/
 # Windows
 Thumbs.db
 Thumbs.db:encryptable
@@ -24,6 +30,8 @@ ehthumbs_vista.db
 Desktop.ini
 $RECYCLE.BIN/
 *.lnk
+apps/mobile/apps/
+**/.test-export/
 
 # Linux
 *~

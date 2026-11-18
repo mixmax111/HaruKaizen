@@ -66,6 +66,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-harukaizen_super_secure_local_jwt_secret_32_chars_min}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-harukaizen_super_secure_local_refresh_secret_32_chars_min}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      ALTCHA_HMAC_KEY: ${ALTCHA_HMAC_KEY:-harukaizen_local_altcha_hmac_secret_key_32_chars_2026}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
     volumes:
       - uploads_local_data:/app/uploads/progress
@@ -98,7 +99,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080/api/v1}
+      INTERNAL_API_URL: http://api:8080/api/v1
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8002/api/v1}
     ports:
       - "3000:3000"
     healthcheck:

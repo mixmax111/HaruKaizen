@@ -8,11 +8,16 @@ import {
   Modal,
   TextInput,
   Alert,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../../src/config';
 import { BarcodeScannerModal, ScannedFoodResult } from '../../src/components/BarcodeScannerModal';
+import { QuickAddModal } from '../../src/components/nutrition/QuickAddModal';
 import { useSyncStore } from '../../src/stores/syncStore';
+import { useOfflineSyncStore } from '../../src/services/offlineSyncQueue';
+import { apiClient } from '../../src/services/api';
 import { hapticFeedback } from '../../src/utils/haptics';
 import { scheduleMealReminder } from '../../src/services/notificationService';
 
@@ -42,38 +47,49 @@ interface LoggedFoodItem {
 export default function NutritionScreen() {
   const { enqueueNutrition } = useSyncStore();
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isServingModalOpen, setIsServingModalOpen] = useState(false);
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
   const [pendingFood, setPendingFood] = useState<ScannedFoodResult | null>(null);
   const [servingGrams, setServingGrams] = useState<string>('100');
   const [selectedMealType, setSelectedMealType] = useState<'BREAKFAST' | 'LUNCH' | 'DINNER' | 'SNACK'>('LUNCH');
 
   const [recentFoods, setRecentFoods] = useState<ScannedFoodResult[]>([]);
+  const [loggedItems, setLoggedItems] = useState<LoggedFoodItem[]>([]);
 
-  const [loggedItems, setLoggedItems] = useState<LoggedFoodItem[]>([
-    {
-      id: 'item-1',
-      name: 'Fiocchi di Avena Integrali',
-      brand: 'HaruKaizen Foods',
-      grams: 80,
-      calories: 300,
-      proteins: 10.5,
-      carbs: 52,
-      fats: 5.5,
-      mealType: 'BREAKFAST',
-    },
-    {
-      id: 'item-2',
-      name: 'Petto di Pollo ai Ferri',
-      brand: 'Macelleria',
-      grams: 200,
-      calories: 220,
-      proteins: 46,
-      carbs: 0,
-      fats: 3.2,
-      mealType: 'LUNCH',
-    },
-  ]);
+  // Carica i log reali di oggi da backend
+  useEffect(() => {
+    async function loadTodayLogs() {
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const res = await apiClient.get(`/nutrition/logs?date=${today}`);
+        const logs = res.data?.data || res.data;
+        if (Array.isArray(logs) && logs.length > 0) {
+          const mapped: LoggedFoodItem[] = logs.map((log: any) => ({
+            id: log.id,
+            name: log.customFoodName || log.foodItem?.name || 'Alimento',
+            brand: log.foodItem?.brand || '',
+            grams: Number(log.quantityG || 100),
+            calories: Number(log.caloriesConsumed || 0),
+            proteins: Number(log.proteinConsumed || 0),
+            carbs: Number(log.carbsConsumed || 0),
+            fats: Number(log.fatConsumed || 0),
+            mealType: log.mealType || 'LUNCH',
+          }));
+          setLoggedItems(mapped);
+        }
+      } catch {
+        // Fallback silenzioso se offline
+      }
+    }
+    loadTodayLogs();
+  }, []);
 
   // Carica la cronologia degli alimenti recenti all'avvio
   useEffect(() => {
@@ -120,6 +136,45 @@ export default function NutritionScreen() {
     setIsServingModalOpen(true);
   };
 
+  const handleSearchFoods = async (q: string) => {
+    setSearchQuery(q);
+    const trimmed = q.trim();
+    if (!trimmed) {
+      setSearchResults([]);
+      return;
+    }
+    setIsSearching(true);
+    setSearchError(null);
+    try {
+      const res = await apiClient.get('/nutrition/food/search', { params: { q: trimmed } });
+      const items = res.data?.data || res.data;
+      if (Array.isArray(items)) {
+        setSearchResults(items);
+      } else {
+        setSearchResults([]);
+      }
+    } catch (err: any) {
+      setSearchError(err.response?.data?.message || 'Errore durante la ricerca alimenti');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSelectSearchResult = (item: any) => {
+    hapticFeedback.light();
+    setIsSearchModalOpen(false);
+    const food: ScannedFoodResult = {
+      code: item.barcode || '',
+      name: item.name,
+      brand: item.brand || '',
+      calories: Number(item.kcalPer100g ?? item.calories ?? 0),
+      proteins: Number(item.proteinPer100g ?? item.proteins ?? 0),
+      carbs: Number(item.carbsPer100g ?? item.carbs ?? 0),
+      fats: Number(item.fatPer100g ?? item.fats ?? 0),
+    };
+    handleFoodScanned(food);
+  };
+
   const handleConfirmAddFood = async () => {
     if (!pendingFood) return;
 
@@ -132,11 +187,22 @@ export default function NutritionScreen() {
     const calculatedFats = +(pendingFood.fats * factor).toFixed(1);
 
     const clientSyncId = `nutri_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const nowIso = new Date().toISOString();
 
-    // Inserisce nella coda di sincronizzazione offline
-    await enqueueNutrition({
+    const serverPayload = {
+      loggedAt: nowIso,
+      mealType: selectedMealType,
+      quantityG: grams,
+      customFoodName: pendingFood.name,
+      caloriesConsumed: calculatedCalories,
+      proteinConsumed: calculatedProteins,
+      carbsConsumed: calculatedCarbs,
+      fatConsumed: calculatedFats,
+    };
+
+    const offlinePayload = {
       clientSyncId,
-      clientCapturedAt: new Date().toISOString(),
+      clientCapturedAt: nowIso,
       barcode: pendingFood.code,
       foodName: pendingFood.name,
       calories: calculatedCalories,
@@ -145,7 +211,17 @@ export default function NutritionScreen() {
       fats: calculatedFats,
       grams,
       mealType: selectedMealType,
-    });
+    };
+
+    try {
+      await apiClient.post('/nutrition/logs', serverPayload);
+    } catch {
+      await useOfflineSyncStore.getState().enqueueMutation('CREATE_NUTRITION_LOG', {
+        ...offlinePayload,
+        quantityG: grams,
+      });
+      await enqueueNutrition(offlinePayload);
+    }
 
     // Salva tra i recenti
     await saveToRecentFoods(pendingFood);
@@ -168,7 +244,7 @@ export default function NutritionScreen() {
     setPendingFood(null);
 
     await hapticFeedback.success();
-    Alert.alert('Alimento Registrato', `${newItem.name} (${grams}g) salvato nel diario offline.`);
+    Alert.alert('Alimento Registrato', `${newItem.name} (${grams}g) salvato nel diario.`);
   };
 
   const handleSetReminder = async (hours: number, label: string) => {
@@ -176,7 +252,7 @@ export default function NutritionScreen() {
     setIsReminderModalOpen(false);
     const notifId = await scheduleMealReminder(label, hours * 60);
     if (notifId) {
-      Alert.alert('Promemoria Impostato! ⏰', `Riceverai una notifica per "${label}" tra ${hours} ore.`);
+      Alert.alert('Promemoria Impostato! â°', `Riceverai una notifica per "${label}" tra ${hours} ore.`);
     } else {
       Alert.alert('Promemoria', 'Abilita le notifiche nelle impostazioni del telefono per ricevere promemoria.');
     }
@@ -204,6 +280,25 @@ export default function NutritionScreen() {
             <Text style={styles.subtitle}>Tracker rapido & Barcode EAN-13</Text>
           </View>
           <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.btnQuickAdd}
+              onPress={() => {
+                hapticFeedback.light();
+                setIsQuickAddOpen(true);
+              }}
+            >
+              <Text style={styles.btnQuickAddIcon}>⚡</Text>
+              <Text style={styles.btnQuickAddText}>Quick</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.btnReminder}
+              onPress={() => {
+                hapticFeedback.light();
+                setIsSearchModalOpen(true);
+              }}
+            >
+              <Text style={styles.btnReminderIcon}>🔍</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.btnReminder}
               onPress={() => {
@@ -304,7 +399,7 @@ export default function NutritionScreen() {
                     {f.brand || '100g standard'}
                   </Text>
                   <Text style={styles.recentFoodCals}>
-                    {f.calories} kcal <Text style={styles.recentMacrosText}>• P:{f.proteins}g</Text>
+                    {f.calories} kcal <Text style={styles.recentMacrosText}>â€¢ P:{f.proteins}g</Text>
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -320,7 +415,7 @@ export default function NutritionScreen() {
               <Text style={styles.foodName}>{item.name}</Text>
               {item.brand ? <Text style={styles.foodBrand}>{item.brand}</Text> : null}
               <Text style={styles.foodPortion}>
-                {item.grams}g • {item.mealType}
+                {item.grams}g â€¢ {item.mealType}
               </Text>
             </View>
             <View style={styles.foodMacros}>
@@ -341,7 +436,7 @@ export default function NutritionScreen() {
         />
       </Modal>
 
-      {/* Modal Quantità e Porzione post-scansione o da recenti */}
+      {/* Modal QuantitÃ  e Porzione post-scansione o da recenti */}
       <Modal visible={isServingModalOpen} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={styles.modalBox}>
@@ -418,7 +513,7 @@ export default function NutritionScreen() {
       <Modal visible={isReminderModalOpen} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>⏰ Imposta Promemoria Pasto</Text>
+            <Text style={styles.modalTitle}>â° Imposta Promemoria Pasto</Text>
             <Text style={styles.reminderDesc}>
               Ricevi una notifica push locale per ricordarti di registrare i macronutrienti:
             </Text>
@@ -458,6 +553,98 @@ export default function NutritionScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Modal Ricerca Alimenti Open Food Facts v3 & USDA */}
+      <Modal visible={isSearchModalOpen} animationType="slide">
+        <View style={styles.searchModalContainer}>
+          <View style={styles.searchModalHeader}>
+            <Text style={styles.searchModalTitle}>RICERCA ALIMENTI (OFF v3 / USDA)</Text>
+            <TouchableOpacity
+              style={styles.searchCloseBtn}
+              onPress={() => {
+                hapticFeedback.light();
+                setIsSearchModalOpen(false);
+              }}
+            >
+              <Text style={styles.searchCloseBtnText}>✕ CHIUDI</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.searchInputRow}>
+            <TextInput
+              style={styles.searchTextInput}
+              value={searchQuery}
+              onChangeText={handleSearchFoods}
+              placeholder="Cerca es. riso basmati, petto pollo, avena..."
+              placeholderTextColor={COLORS.textDim}
+              autoCapitalize="none"
+              autoFocus
+            />
+            {isSearching && (
+              <ActivityIndicator
+                size="small"
+                color={COLORS.primary}
+                style={{ marginLeft: 8 }}
+              />
+            )}
+          </View>
+
+          {searchError && (
+            <Text style={styles.searchErrorText}>{searchError}</Text>
+          )}
+
+          <ScrollView style={styles.searchResultsList}>
+            {searchResults.map((item, idx) => (
+              <TouchableOpacity
+                key={`${item.name}-${idx}`}
+                style={styles.searchResultItem}
+                onPress={() => handleSelectSearchResult(item)}
+              >
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={styles.searchResultName} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  {item.brand ? (
+                    <Text style={styles.searchResultBrand} numberOfLines={1}>
+                      {item.brand}
+                    </Text>
+                  ) : null}
+                  <View style={styles.sourceBadgeRow}>
+                    <Text style={styles.sourceBadgeText}>
+                      [{item.source || 'OFF_V3'}]
+                    </Text>
+                    {item.barcode ? (
+                      <Text style={styles.barcodeSubText}>EAN: {item.barcode}</Text>
+                    ) : null}
+                  </View>
+                </View>
+                <View style={styles.searchResultMacros}>
+                  <Text style={styles.searchResultCal}>
+                    {Math.round(item.kcalPer100g ?? item.calories ?? 0)} kcal
+                  </Text>
+                  <Text style={styles.searchResultMacroText}>
+                    P:{Math.round(item.proteinPer100g ?? item.proteins ?? 0)}g • C:{Math.round(item.carbsPer100g ?? item.carbs ?? 0)}g
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+
+            {!isSearching && searchResults.length === 0 && searchQuery.trim().length > 1 && (
+              <Text style={styles.searchEmptyText}>Nessun alimento trovato per &quot;{searchQuery}&quot;</Text>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Modal Quick Add Offline-First */}
+      <QuickAddModal
+        visible={isQuickAddOpen}
+        onClose={() => setIsQuickAddOpen(false)}
+        defaultMealType={selectedMealType}
+        onSuccess={(newItem) => {
+          setLoggedItems((prev) => [newItem, ...prev]);
+        }}
+      />
     </View>
   );
 }
@@ -491,6 +678,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  btnQuickAdd: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: COLORS.card,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.primaryDark,
+  },
+  btnQuickAddIcon: {
+    fontSize: 14,
+  },
+  btnQuickAddText: {
+    color: COLORS.primary,
+    fontWeight: '700',
+    fontSize: 12,
   },
   btnReminder: {
     backgroundColor: '#27272a',
@@ -838,6 +1044,114 @@ const styles = StyleSheet.create({
   modalBtnConfirmText: {
     color: '#09090b',
     fontWeight: '700',
+  },
+  searchModalContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    padding: 16,
+    paddingTop: Platform.OS === 'ios' ? 48 : 24,
+  },
+  searchModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  searchModalTitle: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  searchCloseBtn: {
+    backgroundColor: '#27272a',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  searchCloseBtnText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  searchInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1b22',
+    borderWidth: 1,
+    borderColor: '#3f3f46',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  searchTextInput: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: 15,
+  },
+  searchErrorText: {
+    color: COLORS.danger,
+    fontSize: 13,
+    marginBottom: 8,
+  },
+  searchResultsList: {
+    flex: 1,
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  searchResultName: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  searchResultBrand: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  sourceBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  sourceBadgeText: {
+    color: COLORS.primary,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  barcodeSubText: {
+    color: COLORS.textDim,
+    fontSize: 10,
+  },
+  searchResultMacros: {
+    alignItems: 'flex-end',
+  },
+  searchResultCal: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  searchResultMacroText: {
+    color: COLORS.textDim,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  searchEmptyText: {
+    color: COLORS.textDim,
+    textAlign: 'center',
+    marginTop: 32,
+    fontSize: 14,
   },
 });
 

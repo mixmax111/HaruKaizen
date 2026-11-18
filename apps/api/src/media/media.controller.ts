@@ -1,4 +1,4 @@
-﻿import {
+import {
   Controller,
   Get,
   Post,
@@ -24,7 +24,7 @@ import type { UploadedFileDto } from './dto/uploaded-file.interface.js';
 export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
 
-  @Post('progress/upload')
+  @Post(['progress', 'progress/upload'])
   @UseInterceptors(FileInterceptor('file'))
   uploadProgressPhoto(
     @CurrentUser() user: JwtPayload,

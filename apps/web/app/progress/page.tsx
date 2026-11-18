@@ -1,8 +1,8 @@
-﻿'use client';
+'use client';
 
 import React, { useEffect, useState } from 'react';
 import { AppLayout } from '../../components/layout/app-layout';
-import { apiClient } from '../../lib/api';
+import { apiClient, API_BASE_URL } from '../../lib/api';
 import { Camera, Calendar, Scale, Plus } from 'lucide-react';
 
 export default function ProgressPage() {
@@ -119,7 +119,7 @@ export default function ProgressPage() {
               <div key={media.id} className="bg-[#131b26] border border-[#1f2b3d] rounded-2xl overflow-hidden group">
                 <div className="aspect-[3/4] bg-slate-900 relative">
                   <img
-                    src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/media/file/${media.id}`}
+                    src={`${API_BASE_URL}/media/file/${media.id}`}
                     alt="Progresso"
                     className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                   />

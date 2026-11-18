@@ -17,8 +17,10 @@
     "@react-native-async-storage/async-storage": "1.23.1",
     "@react-native-community/netinfo": "11.4.1",
     "@react-native-community/slider": "4.5.5",
+    "axios": "^1.20.0",
     "expo": "~52.0.0",
     "expo-asset": "~11.0.5",
+    "expo-build-properties": "^58.0.11",
     "expo-camera": "~16.0.18",
     "expo-constants": "~17.0.8",
     "expo-file-system": "~18.0.12",
@@ -41,6 +43,8 @@
   },
   "devDependencies": {
     "@types/react": "~18.3.0",
+    "eslint": "^8.57.0",
+    "eslint-config-expo": "~8.0.1",
     "typescript": "^5.3.3"
   }
 }

@@ -14,6 +14,7 @@ const envSchema = z.object({
   }),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   WEB_ORIGIN: z.string().url().default('http://localhost:3001'),
+  ALTCHA_HMAC_KEY: z.string().min(16).default('harukaizen_local_altcha_hmac_secret_key_32_chars_2026'),
 });
 
 export type Env = z.infer<typeof envSchema>;

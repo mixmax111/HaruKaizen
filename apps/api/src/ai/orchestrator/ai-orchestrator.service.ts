@@ -1,4 +1,4 @@
-﻿import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { SettingsService } from '../../settings/settings.service.js';
 import { ProviderFactory } from './provider.factory.js';
 import { generateObject } from 'ai';
@@ -21,28 +21,36 @@ export class AiOrchestratorService {
 
   constructor(private readonly settingsService: SettingsService) {}
 
-  async generateInsight(
-    userId: string,
-    systemPrompt: string,
-    userPrompt: string,
-  ): Promise<InsightResponse> {
-    // 1. Recupero chiave API decifrata in RAM in modo sicuro
+  async getModelForUser(userId: string) {
+    const settings = await this.settingsService.findByUserId(userId);
+    const provider = settings.preferredLlmProvider || LlmProvider.GEMINI;
+    const modelName = settings.preferredLlmModel || 'gemini-2.5-flash';
+    const customBaseUrl = settings.customLlmBaseUrl;
+
     const apiKey = await this.settingsService.getDecryptedApiKey(userId);
-    if (!apiKey) {
+    if (!apiKey && provider !== LlmProvider.LOCAL_CUSTOM) {
       throw new BadRequestException(
-        'Nessuna API Key configurata. Inserisci la tua OpenAI o Anthropic API Key nelle impostazioni per generare gli AI Insights.',
+        'Nessuna API Key configurata. Inserisci la tua API Key nelle impostazioni del profilo o imposta un provider locale (Ollama / LM Studio).',
       );
     }
 
-    // 2. Recupero provider preferito dalle impostazioni
-    const settings = await this.settingsService.findByUserId(userId);
-    const provider = settings.preferredLlmProvider || LlmProvider.OPENAI;
+    return ProviderFactory.getModel({
+      provider,
+      apiKey,
+      modelName,
+      customBaseUrl,
+    });
+  }
 
-    const model: any = ProviderFactory.getModel(provider, apiKey);
+  async generateInsight(
+    userId: string,
+    systemPrompt: string,
+    userPrompt: string | Array<any>,
+  ): Promise<InsightResponse> {
+    const model: any = await this.getModelForUser(userId);
 
-    this.logger.log(`Invocazione AI per utente ${userId} con provider: ${provider}`);
+    this.logger.log(`Invocazione AI per utente ${userId}`);
 
-    // 3. Generazione Ibrida (Markdown + JSON array per task)
     const result: any = await (generateObject as any)({
       model,
       system: systemPrompt,
@@ -51,5 +59,25 @@ export class AiOrchestratorService {
     });
 
     return result.object as InsightResponse;
+  }
+
+  async generateStructuredObject<T>(
+    userId: string,
+    systemPrompt: string,
+    userPrompt: string | Array<any>,
+    schema: z.ZodType<T> | z.ZodTypeAny,
+  ): Promise<T> {
+    const model: any = await this.getModelForUser(userId);
+
+    this.logger.log(`Generazione strutturata sandboxed per utente ${userId}`);
+
+    const result: any = await (generateObject as any)({
+      model,
+      system: systemPrompt,
+      prompt: userPrompt,
+      schema,
+    });
+
+    return result.object as T;
   }
 }

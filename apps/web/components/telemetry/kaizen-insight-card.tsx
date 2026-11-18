@@ -28,24 +28,24 @@ export function KaizenInsightCard({
       <div className="absolute -top-16 -right-16 w-32 h-32 bg-secondary/20 rounded-full blur-2xl pointer-events-none"></div>
 
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-secondary-container text-on-secondary-container font-label-data-sm text-label-data-sm font-semibold">
-          <Sparkles className="text-body-sm w-3.5 h-3.5 animate-spin" />
+        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-secondary-container/80 text-on-secondary-container font-mono text-xs font-semibold">
+          <Sparkles className="w-3.5 h-3.5 animate-spin" />
           <span>{engineVersion}</span>
         </div>
-        <span className="font-label-data-sm text-label-data-sm text-outline">
+        <span className="font-mono text-xs text-outline">
           {generatedAgo}
         </span>
       </div>
 
-      <div className="flex flex-col gap-1 pt-1">
-        <span className="font-headline-md text-headline-md font-semibold text-on-surface">
+      <div className="flex flex-col gap-1.5 pt-1">
+        <h3 className="font-sans text-base font-semibold text-on-surface">
           {title}
-        </span>
-        <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+        </h3>
+        <p className="font-sans text-sm text-slate-300 leading-relaxed">
           {summary}
         </p>
-        <div className="p-space-sm rounded bg-surface-container mt-1 font-body-sm text-body-sm text-on-surface leading-normal">
-          <strong className="text-primary">Prescription: </strong>
+        <div className="p-3 rounded-lg bg-surface-container mt-1 font-sans text-sm text-slate-200 leading-relaxed border border-surface-container-high/40">
+          <strong className="text-primary font-semibold">Prescription: </strong>
           {prescription}
         </div>
       </div>
@@ -54,19 +54,18 @@ export function KaizenInsightCard({
         <button
           type="button"
           onClick={onApply}
-          className="flex-1 py-1.5 px-space-sm rounded bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-body-sm text-body-sm font-medium transition-colors text-center"
+          className="flex-1 py-1.5 px-space-sm rounded bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-sans text-xs font-semibold transition-colors text-center cursor-pointer"
         >
-          Apply +35g Refeed
+          Applica Raccomandazione
         </button>
         <button
           type="button"
           onClick={onDismiss}
-          className="py-1.5 px-space-sm rounded text-outline hover:text-on-surface font-body-sm text-body-sm transition-colors"
+          className="py-1.5 px-space-sm rounded text-outline hover:text-on-surface font-sans text-xs transition-colors cursor-pointer"
         >
-          Dismiss
+          Archivia
         </button>
       </div>
     </div>
   );
 }
-

@@ -20,7 +20,7 @@ export function AuthSplashScreen({
     const logSequence = [
       '[INFO] Verifying Altcha payload (SHA-256)... VALID',
       '[INFO] Establishing HttpOnly secure tunnel (AES-256)... OK',
-      '[INFO] Synchronizing local SQLite WAL journal... READY',
+      '[INFO] Synchronizing PostgreSQL 17 + Redis 7 telemetry... READY',
       '[INFO] Issuing 302 Redirect to /dashboard...',
     ];
 
