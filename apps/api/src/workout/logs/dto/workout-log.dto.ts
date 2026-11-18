@@ -62,7 +62,7 @@ export class AddLogSetDto {
   setOrder?: number;
 
   @IsString()
-  @IsIn(['WARMUP', 'WORKING', 'DROP', 'DROPSET', 'FAILURE'])
+  @IsIn(['WARMUP', 'WORKING', 'DROPSET', 'FAILURE'])
   setType: SetType;
 
   @IsOptional()

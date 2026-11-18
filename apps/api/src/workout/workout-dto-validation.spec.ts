@@ -20,8 +20,8 @@ describe('Workout DTOs Validation Limits (Step 1 Security)', () => {
       expect(errors).toHaveLength(0);
     });
 
-    it('accepts all allowed setType values including DROP and DROPSET', async () => {
-      const validTypes = ['WARMUP', 'WORKING', 'DROP', 'DROPSET', 'FAILURE'];
+    it('accepts all 4 canonical setType values (WARMUP, WORKING, DROPSET, FAILURE)', async () => {
+      const validTypes = ['WARMUP', 'WORKING', 'DROPSET', 'FAILURE'];
       for (const setType of validTypes) {
         const dto = plainToInstance(AddLogSetDto, {
           orderIndex: 1,
@@ -32,14 +32,16 @@ describe('Workout DTOs Validation Limits (Step 1 Security)', () => {
       }
     });
 
-    it('rejects invalid setType', async () => {
-      const dto = plainToInstance(AddLogSetDto, {
-        orderIndex: 1,
-        setType: 'SUPERSET_INVALID',
-      });
-      const errors = await validate(dto);
-      expect(errors.length).toBeGreaterThan(0);
-      expect(errors[0].property).toBe('setType');
+    it('rejects legacy DROP and invalid setType', async () => {
+      for (const setType of ['DROP', 'SUPERSET_INVALID']) {
+        const dto = plainToInstance(AddLogSetDto, {
+          orderIndex: 1,
+          setType,
+        });
+        const errors = await validate(dto);
+        expect(errors.length).toBeGreaterThan(0);
+        expect(errors[0].property).toBe('setType');
+      }
     });
 
     it('rejects repsCompleted > 500 or < 0', async () => {

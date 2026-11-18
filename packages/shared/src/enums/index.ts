@@ -41,13 +41,13 @@ export enum ExerciseCategory {
  * Tipo di serie nel log granulare (WorkoutLogSet).
  * - WARMUP:  Serie di riscaldamento (non conta per il volume)
  * - WORKING: Serie di lavoro principale
- * - DROP:    Drop set (peso ridotto senza recupero)
+ * - DROPSET: Drop set (peso ridotto senza recupero)
  * - FAILURE: Serie a cedimento muscolare
  */
 export enum SetType {
   WARMUP  = 'WARMUP',
   WORKING = 'WORKING',
-  DROP    = 'DROP',
+  DROPSET = 'DROPSET',
   FAILURE = 'FAILURE',
 }
 
